@@ -125,7 +125,7 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. BATCH-ABRUF DER BINANCE-DATEN
+# 1. BATCH-ABRUF DER BINANCE-DATEN (MIT YAHOO-FALLBACK)
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -336,7 +336,7 @@ def get_btc_dominance():
     return 56.5
 
 
-# 8. Makro-Daten & Leitmärkte (ISOLIERTE FEHLERBEHANDLUNG PRO TICKER)
+# 8. Makro-Daten & Leitmärkte
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -1800,142 +1800,139 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (SICHERER DOMAIN-PUFFER)
+# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
+                # 1. Datum parsen
                 df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
                 df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
 
+                # 2. String-Bereinigung & Robuste numerische Konvertierung für ALLE Makro-Spalten
+                num_cols = [
+                    "FearGreed_Wert", "US_10J_Rendite", "VIX_Wert", "Gold_Wert", 
+                    "Silber_Wert", "Kupfer_Wert", "Spot_ETF_NetFlow_MUSD", 
+                    "News_Sentiment_Score", "DeFi_TVL_MrdUSD", "BTC_Dominanz_Pct",
+                    "DowJones_Wert", "FTSE100_Wert"
+                ]
+                for col in num_cols:
+                    if col in df_market_log.columns:
+                        if df_market_log[col].dtype == object:
+                            df_market_log[col] = (
+                                df_market_log[col]
+                                .astype(str)
+                                .str.replace("%", "", regex=False)
+                                .str.replace("$", "", regex=False)
+                                .str.replace(",", "", regex=False)
+                                .str.strip()
+                            )
+                        df_market_log[col] = pd.to_numeric(df_market_log[col], errors="coerce")
+
+                # 3. Chart-Daten chronologisch sortieren (alt -> neu)
                 df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
 
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
                 
-                # Zeile 1: Sentiment & VIX
+                # REIN 1: Sentiment & VIX
                 col_mc1, col_mc2 = st.columns(2)
 
                 with col_mc1:
                     st.markdown("###### 📊 Sentiment-Verlauf (Fear & Greed)")
-                    df_fg = df_chart_data[df_chart_data["FearGreed_Wert"].notnull() & (df_chart_data["FearGreed_Wert"] > 0)]
+                    df_fg = df_chart_data[df_chart_data["FearGreed_Wert"].notnull() & (df_chart_data["FearGreed_Wert"] > 0)].copy()
                     if not df_fg.empty:
-                        chart_fg_log = (
-                            alt.Chart(df_fg)
-                            .mark_line(point=True, color="#f1c40f", strokeWidth=2)
-                            .encode(
-                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                                y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title="Fear & Greed"),
-                                tooltip=[
-                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                    alt.Tooltip("FearGreed_Wert:Q", title="Wert"),
-                                    alt.Tooltip("FearGreed_Stimmung:N", title="Stimmung"),
-                                ],
-                            )
-                            .properties(height=180)
+                        base = alt.Chart(df_fg).encode(
+                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                            y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title=None),
+                            tooltip=[
+                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                alt.Tooltip("FearGreed_Wert:Q", title="Wert"),
+                                alt.Tooltip("FearGreed_Stimmung:N", title="Stimmung"),
+                            ],
                         )
+                        chart_fg_log = (base.mark_line(color="#f1c40f", strokeWidth=2) + base.mark_point(color="#f1c40f", size=30)).properties(height=180)
                         st.altair_chart(chart_fg_log, use_container_width=True)
                     else:
                         st.info("Keine Daten für Sentiment verfügbar.")
 
                 with col_mc2:
                     st.markdown("###### 📉 Marktpanik (VIX Index)")
-                    if "VIX_Wert" in df_chart_data.columns:
-                        df_vix = df_chart_data[df_chart_data["VIX_Wert"].notnull() & (df_chart_data["VIX_Wert"] > 0)]
-                    else:
-                        df_vix = pd.DataFrame()
+                    df_vix = df_chart_data[df_chart_data["VIX_Wert"].notnull() & (df_chart_data["VIX_Wert"] > 0)].copy()
 
                     if not df_vix.empty:
                         min_vix = max(0, df_vix["VIX_Wert"].min() - 2)
                         max_vix = df_vix["VIX_Wert"].max() + 2
                         if min_vix == max_vix:
-                            min_vix -= 1
-                            max_vix += 1
-                        chart_vix_log = (
-                            alt.Chart(df_vix)
-                            .mark_line(point=True, color="#e74c3c", strokeWidth=2)
-                            .encode(
-                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                                y=alt.Y("VIX_Wert:Q", scale=alt.Scale(domain=[min_vix, max_vix]), title="VIX Index"),
-                                tooltip=[
-                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                    alt.Tooltip("VIX_Wert:Q", title="VIX"),
-                                ],
-                            )
-                            .properties(height=180)
+                            min_vix, max_vix = min_vix - 1, max_vix + 1
+                        
+                        base_vix = alt.Chart(df_vix).encode(
+                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                            y=alt.Y("VIX_Wert:Q", scale=alt.Scale(domain=[min_vix, max_vix]), title=None),
+                            tooltip=[
+                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                alt.Tooltip("VIX_Wert:Q", title="VIX Index"),
+                            ],
                         )
+                        chart_vix_log = (base_vix.mark_line(color="#e74c3c", strokeWidth=2) + base_vix.mark_point(color="#e74c3c", size=40)).properties(height=180)
                         st.altair_chart(chart_vix_log, use_container_width=True)
                     else:
-                        st.info("Noch nicht genügend VIX-Historie geloggt.")
+                        st.info("Noch keine VIX-Historie vorhanden.")
 
-                # Zeile 2: US 10J Zins & Gold
+                # REIN 2: US 10J Zins & Gold
                 col_mc3, col_mc4 = st.columns(2)
 
                 with col_mc3:
                     st.markdown("###### 🏛 US 10J Anleihen-Zins (%)")
-                    if "US_10J_Rendite" in df_chart_data.columns:
-                        df_zins = df_chart_data[df_chart_data["US_10J_Rendite"].notnull() & (df_chart_data["US_10J_Rendite"] > 0)]
-                    else:
-                        df_zins = pd.DataFrame()
+                    df_zins = df_chart_data[df_chart_data["US_10J_Rendite"].notnull() & (df_chart_data["US_10J_Rendite"] > 0)].copy()
 
                     if not df_zins.empty:
-                        min_z = max(0, df_zins["US_10J_Rendite"].min() - 0.2)
-                        max_z = df_zins["US_10J_Rendite"].max() + 0.2
+                        min_z = max(0, df_zins["US_10J_Rendite"].min() - 0.15)
+                        max_z = df_zins["US_10J_Rendite"].max() + 0.15
                         if min_z == max_z:
-                            min_z -= 0.1
-                            max_z += 0.1
-                        chart_zins_log = (
-                            alt.Chart(df_zins)
-                            .mark_line(point=True, color="#3498db", strokeWidth=2)
-                            .encode(
-                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                                y=alt.Y("US_10J_Rendite:Q", scale=alt.Scale(domain=[min_z, max_z]), title="Zins (%)"),
-                                tooltip=[
-                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                    alt.Tooltip("US_10J_Rendite:Q", title="Rendite", format=".2f%"),
-                                ],
-                            )
-                            .properties(height=180)
+                            min_z, max_z = min_z - 0.1, max_z + 0.1
+
+                        base_zins = alt.Chart(df_zins).encode(
+                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                            y=alt.Y("US_10J_Rendite:Q", scale=alt.Scale(domain=[min_z, max_z]), title=None),
+                            tooltip=[
+                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                alt.Tooltip("US_10J_Rendite:Q", title="Zins (%)", format=".2f"),
+                            ],
                         )
+                        chart_zins_log = (base_zins.mark_line(color="#3498db", strokeWidth=2) + base_zins.mark_point(color="#3498db", size=30)).properties(height=180)
                         st.altair_chart(chart_zins_log, use_container_width=True)
                     else:
-                        st.info("Noch nicht genügend Zins-Historie geloggt.")
+                        st.info("Keine Zins-Historie geloggt.")
 
                 with col_mc4:
                     st.markdown("###### 🥇 Goldkurs ($ / Unze)")
-                    if "Gold_Wert" in df_chart_data.columns:
-                        df_gold = df_chart_data[df_chart_data["Gold_Wert"].notnull() & (df_chart_data["Gold_Wert"] > 0)]
-                    else:
-                        df_gold = pd.DataFrame()
+                    df_gold = df_chart_data[df_chart_data["Gold_Wert"].notnull() & (df_chart_data["Gold_Wert"] > 0)].copy()
 
                     if not df_gold.empty:
-                        min_g = max(0, df_gold["Gold_Wert"].min() - 50)
-                        max_g = df_gold["Gold_Wert"].max() + 50
+                        min_g = max(0, df_gold["Gold_Wert"].min() - 30)
+                        max_g = df_gold["Gold_Wert"].max() + 30
                         if min_g == max_g:
-                            min_g -= 10
-                            max_g += 10
-                        chart_gold_log = (
-                            alt.Chart(df_gold)
-                            .mark_line(point=True, color="#f39c12", strokeWidth=2)
-                            .encode(
-                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                                y=alt.Y("Gold_Wert:Q", scale=alt.Scale(domain=[min_g, max_g]), title="Gold ($)"),
-                                tooltip=[
-                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                    alt.Tooltip("Gold_Wert:Q", title="Gold ($)", format=",.1f"),
-                                ],
-                            )
-                            .properties(height=180)
+                            min_g, max_g = min_g - 10, max_g + 10
+
+                        base_gold = alt.Chart(df_gold).encode(
+                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                            y=alt.Y("Gold_Wert:Q", scale=alt.Scale(domain=[min_g, max_g]), title=None),
+                            tooltip=[
+                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                alt.Tooltip("Gold_Wert:Q", title="Gold ($)", format=",.1f"),
+                            ],
                         )
+                        chart_gold_log = (base_gold.mark_line(color="#f39c12", strokeWidth=2) + base_gold.mark_point(color="#f39c12", size=30)).properties(height=180)
                         st.altair_chart(chart_gold_log, use_container_width=True)
                     else:
-                        st.info("Noch nicht genügend Gold-Historie geloggt.")
+                        st.info("Keine Gold-Historie geloggt.")
 
                 st.write("---")
                 st.markdown("##### 📋 Vollständige Makro-Historie")
 
-                # TABELLEN-DATEN
+                # TABELLEN-DATEN: Neueste Einträge zuerst
                 df_table_data = df_market_log.sort_values(by="ParsedDate", ascending=False)
 
                 display_cols = []
@@ -1952,7 +1949,6 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                     tvl_w = row.get("DeFi_TVL_MrdUSD", None)
                     btc_d = row.get("BTC_Dominanz_Pct", None)
                     dow_w = row.get("DowJones_Wert", None)
-                    ftse_w = row.get("FTSE100_Wert", None)
 
                     display_cols.append({
                         "Datum": d_clean,
@@ -1965,7 +1961,6 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                         "Silber ($)": f"{silver_w:,.2f}" if pd.notnull(silver_w) and silver_w > 0 else "-",
                         "Kupfer ($)": f"{copper_w:,.2f}" if pd.notnull(copper_w) and copper_w > 0 else "-",
                         "Dow Jones": f"{dow_w:,.0f}" if pd.notnull(dow_w) and dow_w > 0 else "-",
-                        "FTSE 100": f"{ftse_w:,.0f}" if pd.notnull(ftse_w) and ftse_w > 0 else "-",
                         "DeFi TVL": f"{tvl_w:.1f}B $" if pd.notnull(tvl_w) and tvl_w > 0 else "-",
                         "BTC Dom.": f"{btc_d:.1f}%" if pd.notnull(btc_d) and btc_d > 0 else "-",
                     })
