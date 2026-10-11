@@ -8,40 +8,31 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 
-# Seiten-Konfiguration (Seitenleiste wird auf Smartphones IMMER direkt ausgeklappt)
+# Seiten-Konfiguration
 st.set_page_config(
     page_title="Krypto-Kompass",
     page_icon="🪙",
     layout="centered",
-    initial_sidebar_state="expanded",
 )
 
-# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Pfeil-Button für Handy explizit geschützt) ---
+# --- STREAMLIT-UI ELEMENTE COMPLETE CLEAN UP (Für Mobilgeräte optimiert) ---
 hide_streamlit_style = """
     <style>
-    /* Admin-Toolbar, Hauptmenü & Footer ausblenden */
-    [data-testid="stToolbar"] { visibility: hidden !important; }
-    #MainMenu { visibility: hidden !important; }
-    footer { visibility: hidden !important; }
-    
-    /* Deploy-Buttons & Streamlit Badges entfernen */
+    /* Oberste Leiste, Admin-Menü und Footer unsichtbar machen */
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    header { visibility: hidden; }
     .stAppDeployButton { display: none !important; }
-    [data-testid="manage-app-button"] { display: none !important; }
     div[data-testid="stDecoration"] { display: none !important; }
     div[data-testid="stViewerBadge"] { display: none !important; }
     .stAppViewerBadge { display: none !important; }
     div[class*="viewerBadge"] { display: none !important; }
-
-    /* Pfeil-Button (>) zum Öffnen/Schließen der Seitenleiste auf Mobilgeräten erzwingen */
-    [data-testid="stHeader"] { background-color: transparent !important; }
-    [data-testid="stSidebarCollapsedControl"] {
-        visibility: visible !important;
-        display: flex !important;
-        z-index: 1000000 !important;
-    }
-    [data-testid="stSidebarCollapseButton"] {
-        visibility: visible !important;
-        display: flex !important;
+    [data-testid="manage-app-button"] { display: none !important; }
+    
+    /* Mobilfreundliche Abstände */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
     }
     </style>
 """
@@ -70,43 +61,56 @@ if not check_password():
     st.stop()
 # ------------------------------
 
-# Automatischer Refresh alle 5 Minuten (300.000 Millisekunden)
-auto_refresh_aktiv = st.sidebar.checkbox(
-    "🔄 Auto-Refresh (alle 5 Min.) aktiv", value=True
-)
+# TITEL UND KOPFBEREICH
+col_title, col_btn = st.columns([2.5, 1.5])
+with col_title:
+    st.markdown("# 🪙 Krypto-Kompass")
+    st.markdown("### *Live-ETF Flows & Signal-Formel*")
+with col_btn:
+    st.write("")
+    if st.button("🔄 Aktualisieren", width="stretch"):
+        st.cache_data.clear()
+        st.rerun()
+    aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    st.markdown(
+        f'<p style="font-size: 11px; color: gray; text-align: center;'
+        f' margin-top: 2px;">Letztes Update:<br>{aktuelle_zeit}</p>',
+        unsafe_allow_html=True,
+    )
+
+# --- OBERES EINSTELLUNGS-MENÜ (OPTIMIERT FÜR SMARTPHONES) ---
+with st.expander("⚙️ **Einstellungen & Investitions-Planung (Hier anpassen)**", expanded=True):
+    col_e1, col_e2 = st.columns(2)
+    
+    with col_e1:
+        zeitraum_wahl = st.selectbox(
+            "Rückblick-Zeitraum wählen:",
+            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage"],
+            index=1,
+        )
+        investment_wahl = st.selectbox(
+            "Geplantes Ordervolumen (Tranche):",
+            [100, 500, 1000, 2500, 5000, "Individuell"],
+            index=1,
+        )
+        if investment_wahl == "Individuell":
+            geplantes_budget = st.number_input(
+                "Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0
+            )
+        else:
+            geplantes_budget = float(investment_wahl)
+
+    with col_e2:
+        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+        ausgewaehlte_coins = st.multiselect(
+            "Kryptowährungen anzeigen:",
+            options=list(coins_map.keys()),
+            default=list(coins_map.keys()),
+        )
+        auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
+
 if auto_refresh_aktiv:
     st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
-
-st.sidebar.header("⚙ Einstellungen")
-
-zeitraum_wahl = st.sidebar.selectbox(
-    "Rückblick-Zeitraum wählen:",
-    ["24 Stunden", "7 Tage", "30 Tage", "90 Tage"],
-    index=1,
-)
-
-# Zukünftige Investition in der Sidebar
-st.sidebar.markdown("---")
-st.sidebar.header("💼 Zukünftige Investition")
-investment_wahl = st.sidebar.selectbox(
-    "Geplantes Ordervolumen (Tranche):",
-    [100, 500, 1000, 2500, 5000, "Individuell"],
-    index=1,
-)
-
-if investment_wahl == "Individuell":
-    geplantes_budget = st.sidebar.number_input(
-        "Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0
-    )
-else:
-    geplantes_budget = float(investment_wahl)
-
-coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
-ausgewaehlte_coins = st.sidebar.multiselect(
-    "Kryptowährungen anzeigen:",
-    options=list(coins_map.keys()),
-    default=list(coins_map.keys()),
-)
 
 # Konfiguration je nach Zeitraum
 if zeitraum_wahl == "24 Stunden":
@@ -117,25 +121,6 @@ elif zeitraum_wahl == "30 Tage":
     limit_anzahl, interval, wöchentlich, zeitformat = 30, "1d", False, "%d.%m."
 else:
     limit_anzahl, interval, wöchentlich, zeitformat = 90, "1d", True, "%d.%m."
-
-# OBERER BEREICH
-col_title, col_btn = st.columns([3, 1])
-with col_title:
-    st.markdown("# 🪙 Krypto-Kompass")
-    st.markdown(
-        "### *Intelligente Entscheidungsformel – Live-ETF Flows & Ampel-Logik*"
-    )
-with col_btn:
-    st.write("")
-    if st.button("🔄 Jetzt Aktualisieren", width="stretch"):
-        st.cache_data.clear()
-        st.rerun()
-    aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    st.markdown(
-        f'<p style="font-size: 11px; color: gray; text-align: center;'
-        f' margin-top: 4px;">Letztes Update:<br>{aktuelle_zeit}</p>',
-        unsafe_allow_html=True,
-    )
 
 st.write("---")
 
@@ -415,7 +400,6 @@ def calculate_atr(symbol, limit=30):
     except Exception:
         pass
 
-    # Fallback yfinance
     try:
         yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
         t = yf.Ticker(yf_sym)
@@ -464,7 +448,6 @@ def get_real_rsi(symbol, limit=30):
     except Exception:
         pass
 
-    # Fallback yfinance
     try:
         yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
         t = yf.Ticker(yf_sym)
@@ -774,7 +757,6 @@ def get_historical_data(symbol, limit_days, interval, weekly=False):
     except Exception:
         pass
 
-    # Fallback yfinance
     try:
         yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
         t = yf.Ticker(yf_sym)
@@ -968,82 +950,6 @@ register_improvement(
     "Integration von Cardano (ADAEUR) und Bitcoin Cash (BCHEUR) in die Coin-Auswahl und Binance-Live-Abfragen.",
     "11.10.2026",
 )
-register_improvement(
-    "Integration globaler Leitmärkte & Datenbereinigung",
-    "S&P 500 und DAX ergänzt, in den Signal-Score aufgenommen. 'nan'-Werte im Makro-Archiv durch saubere Platzhalter ersetzt.",
-    "05.10.2026",
-)
-register_improvement(
-    "Integration erweiterter Makro- & Rohstoffquellen",
-    "Automatischer Live-Abruf und Logging von US Dollar Index (DXY), EUR/USD,"
-    " Gold-Spot und WTI-Rohöl über Yahoo Finance.",
-    "05.10.2026",
-)
-register_improvement(
-    "Automatische Datenquellen-Bereinigung",
-    "Alte 'None'- oder Leerwerte in der Spalte Datenquelle werden beim"
-    " Einlesen automatisch korrigiert und bereinigt.",
-    "05.10.2026",
-)
-register_improvement(
-    "Streamlit UI & Layout Standardisierung",
-    "Vollständige Umstellung veralteter Container-Breiten auf den modernen"
-    " Standard width='stretch'.",
-    "05.10.2026",
-)
-register_improvement(
-    "Erweiterte CSV-Deduplizierung",
-    "Automatisches Erkennen und Bereinigen von Mehrfacheinträgen im"
-    " Verbesserungsprotokoll.",
-    "05.10.2026",
-)
-register_improvement(
-    "Autonomes Quant-Self-Tuning Module",
-    "Vollständig lokales, algorithmisches Lernsystem zur Auswertung von"
-    " Fehlsignalen und mathematischer Optimierung der Gewichtungen.",
-    "04.10.2026",
-)
-register_improvement(
-    "Aktive Kopplung der Lern-Gewichtungen an Live-Signale",
-    "Die vom autonomen Lernmodul gelernten Indikator-Gewichtungen fließen"
-    " direkt in die Berechnung der Live-Signale und des Dashboard-Charts ein.",
-    "04.10.2026",
-)
-register_improvement(
-    "Integration ECHTER US Spot-ETF Netto-Zuflüsse",
-    "Direkte Einbindung tagesaktueller Spot-ETF Netto-Zuflüsse in Millionen"
-    " USD über Coinglass/Farside anstelle von Volumen-Proxies.",
-    "04.10.2026",
-)
-register_improvement(
-    "Dynamischer ATR Volatilitäts- & Stop-Loss-Rechner",
-    "Berechnung der Average True Range (ATR) für jedes Asset zur automatischen"
-    " Ausweisung präziser Stop-Loss- und Take-Profit-Marken.",
-    "04.10.2026",
-)
-register_improvement(
-    "Investitions-Entscheidungsformel & Ampel-Logik",
-    "Mathematische Verknüpfung der geplanten Tranche mit den Marktsignalen.",
-    "04.10.2026",
-)
-register_improvement(
-    "Backtest-Visualisierung im Dashboard",
-    "Interaktiver Altair-Chart zum direkten Vergleich der kumulierten"
-    " App-Signale gegen eine klassische Buy-and-Hold-Anlage.",
-    "04.10.2026",
-)
-register_improvement(
-    "CSV-Export & Backup-Funktionen",
-    "Download-Buttons im Archiv-Bereich zur lokalen Sicherung aller"
-    " Prognose-, Markt- und Verbesserungsprotokolle.",
-    "04.10.2026",
-)
-register_improvement(
-    "Dynamische Live-Aktualisierung des Logs",
-    "Tagesaktuelle Log-Einträge werden bei jedem Abruf automatisch mit"
-    " sekundengenauer Uhrzeit aktualisiert.",
-    "01.06.2026",
-)
 
 # Live-Daten abrufen
 bond_val, bond_change = get_macro_bond_yield()
@@ -1175,7 +1081,7 @@ def generate_signal(
 # 1. OBEN: Krypto-Anzeige & Multi-Asset Portfolio Allokator
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
-        st.warning("👈 Bitte wähle in der linken Sidebar eine Kryptowährung aus.")
+        st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
     else:
         coin_results = {}
         for coin in ausgewaehlte_coins:
@@ -1275,15 +1181,15 @@ if current_data and len(current_data) > 0:
         cash_reserve_pct = round((cash_reserve_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
 
         with st.container(border=True):
-            st.markdown("### 💼 Multi-Asset Portfolio-Allokation (Tranchen-Budgetierung)")
+            st.markdown("### 💼 Multi-Asset Portfolio-Allokation")
             st.markdown(
                 f"Das Gesamtbudget deiner Tranche (**{geplantes_budget:,.2f} €**) wird dynamisch"
-                " nach Signalstärke auf die ausgewählten Assets verteilt. So wird eine Über-Allokation vermieden."
+                " nach Signalstärke auf die ausgewählten Assets verteilt."
             )
             col_p1, col_p2, col_p3 = st.columns(3)
             col_p1.metric("Geplantes Gesamtbudget", f"{geplantes_budget:,.2f} €")
             col_p2.metric("Krypto-Investition Total", f"{total_invested_eur:,.2f} €", f"{100.0 - cash_reserve_pct:.1f}% Allokation")
-            col_p3.metric("Cash-Reserve (Schutz / Halten)", f"{cash_reserve_eur:,.2f} €", f"{cash_reserve_pct:.1f}% Cash")
+            col_p3.metric("Cash-Reserve (Schutz)", f"{cash_reserve_eur:,.2f} €", f"{cash_reserve_pct:.1f}% Cash")
 
             alloc_chart_data = []
             for coin, res in coin_results.items():
@@ -1307,20 +1213,11 @@ if current_data and len(current_data) > 0:
                     .mark_bar(cornerRadiusEnd=4)
                     .encode(
                         x=alt.X("Betrag (€):Q", title="Allokation in €"),
-                        y=alt.Y(
-                            "Asset:N",
-                            sort=None,
-                            title=None,
-                            axis=alt.Axis(labelOverlap=False, labelLimit=200),
-                        ),
-                        color=alt.Color(
-                            "Asset:N",
-                            scale=alt.Scale(scheme="category10"),
-                            legend=None,
-                        ),
+                        y=alt.Y("Asset:N", sort=None, title=None),
+                        color=alt.Color("Asset:N", scale=alt.Scale(scheme="category10"), legend=None),
                         tooltip=["Asset", "Betrag (€)", "Anteil (%)"],
                     )
-                    .properties(height=max(160, len(alloc_chart_data) * 45))
+                    .properties(height=max(140, len(alloc_chart_data) * 40))
                 )
                 st.altair_chart(chart_alloc, width="stretch")
 
@@ -1571,7 +1468,7 @@ with st.container(border=True):
 # 3. EXPANDER 1: AUTONOMES SELBSTLERNENDES OPTIMIERUNGS-MODUL & BACKTEST
 st.write("")
 with st.expander(
-    "🧠 **Autonomes Selbstlern-System & Backtest-Visualisierung**", expanded=True
+    "🧠 **Autonomes Selbstlern-System & Backtest-Visualisierung**", expanded=False
 ):
     st.markdown(
         "Dieses Modul wertet deine protokollierten Prognosen über die letzten **365"
@@ -1715,41 +1612,6 @@ with st.expander(
                 st.markdown(local_learning_report)
 
                 st.write("---")
-                st.markdown(
-                    "### 🛠️ Historie umgesetzter Systemverbesserungen (inkl."
-                    " Änderungsdatum)"
-                )
-                if os.path.exists(IMP_FILE):
-                    try:
-                        df_imp_log = pd.read_csv(IMP_FILE)
-                        if not df_imp_log.empty:
-                            if "Datum" in df_imp_log.columns and (
-                                "Änderungsdatum" not in df_imp_log.columns
-                            ):
-                                df_imp_log = df_imp_log.rename(
-                                    columns={"Datum": "Änderungsdatum"}
-                                )
-
-                            st.dataframe(
-                                df_imp_log,
-                                column_config={
-                                    "Änderungsdatum": st.column_config.TextColumn(
-                                        "Änderungsdatum", width="small"
-                                    ),
-                                    "Titel": st.column_config.TextColumn(
-                                        "Titel", width="medium"
-                                    ),
-                                    "Beschreibung": st.column_config.TextColumn(
-                                        "Beschreibung", width="large"
-                                    ),
-                                },
-                                width="stretch",
-                                hide_index=True,
-                            )
-                    except Exception:
-                        pass
-
-                st.write("---")
                 st.markdown("### 💾 CSV-Export & Lokales Backup")
                 col_d1, col_d2, col_d3 = st.columns(3)
                 if os.path.exists(LOG_FILE):
@@ -1779,12 +1641,6 @@ with st.expander(
                             mime="text/csv",
                             width="stretch",
                         )
-
-                st.success(
-                    "📈 **Archiv-Status:** Alle Prognose-, Markt- und"
-                    " Verbesserungsprotokolle werden rollierend über 365 Tage"
-                    " gespeichert und können jederzeit lokal exportiert werden."
-                )
         except Exception as e:
             st.warning(f"Fehler: {e}")
     else:
@@ -1793,8 +1649,7 @@ with st.expander(
 # 4. EXPANDER 2: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV
 st.write("")
 with st.expander(
-    "📊 **Historisches Makro- & Stimmungsdaten-Archiv (Quellen, Änderungsdaten"
-    " & Euroraum)**",
+    "📊 **Historisches Makro- & Stimmungsdaten-Archiv**",
     expanded=False,
 ):
     st.markdown(
@@ -1858,33 +1713,8 @@ with st.expander(
                 df_macro_table = pd.DataFrame(macro_display_rows)
                 df_macro_table = df_macro_table.fillna("-")
                 st.dataframe(df_macro_table, width="stretch", hide_index=True)
-
-                st.write("---")
-                st.markdown(
-                    "### 🤖 Makro-Signifikanzquote & 1-Jahres-Datenhaltung (365 Tage)"
-                )
-                if macro_total_evaluated > 0:
-                    macro_hit_rate = (macro_correct_hits / macro_total_evaluated) * 100
-                    st.metric(
-                        "Ermittelte Makro-Signifikanzquote",
-                        f"{macro_hit_rate:.1f}%",
-                        (
-                            f"{macro_correct_hits} von {macro_total_evaluated}"
-                            " Makro-Phasen erfolgreich bewertet"
-                        ),
-                    )
-
-                st.success(
-                    "📈 **Makro-Archiv-Status:** Umfassende Makro-, Devisen- und"
-                    " Rohstoffdaten sind auf 1 Jahr (365 Tage) in `market_data_log.csv`"
-                    " eingestellt."
-                )
         except Exception as e:
             st.warning(f"Fehler beim Laden des Makro-Archivs: {e}")
-    else:
-        st.info(
-            "Das Makro-Archiv füllt sich automatisch bei jedem Abruf im Hintergrund."
-        )
 
 st.markdown("---")
 st.caption(
