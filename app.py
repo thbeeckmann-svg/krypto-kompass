@@ -280,7 +280,6 @@ def get_news_sentiment_score():
 def get_defillama_metrics():
     res_data = {"stablecoin_mcap_b": 135.0, "global_tvl_b": 85.0}
     try:
-        # Stablecoin Supply
         url = "https://stablecoins.llama.fi/stablecoins?includePrices=true"
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
@@ -293,7 +292,6 @@ def get_defillama_metrics():
             
             res_data["stablecoin_mcap_b"] = round((usdt_mcap + usdc_mcap) / 1_000_000_000.0, 2)
 
-        # Global DeFi TVL
         tvl_url = "https://api.llama.fi/v2/chains"
         tvl_res = requests.get(tvl_url, timeout=5)
         if tvl_res.status_code == 200:
@@ -309,7 +307,6 @@ def get_defillama_metrics():
 @st.cache_data(ttl=300)
 def get_btc_dominance():
     try:
-        url = "https://api.coinglass.com/api/pro/v1/futures/bitcoin_etf/flow" # fallback safe
         res = requests.get("https://api.coingecko.com/api/v3/global", timeout=4)
         if res.status_code == 200:
             dom = res.json().get("data", {}).get("market_cap_percentage", {}).get("btc", 56.5)
@@ -684,7 +681,6 @@ def calculate_detailed_factor_scores(
             "Krypto-Liquidität & DeFi TVL": 5.0,
         }
 
-    # 1. Trend Score
     if perf_val <= -7.5:
         trend_score = 80
     elif perf_val <= -3.0:
@@ -696,7 +692,6 @@ def calculate_detailed_factor_scores(
     else:
         trend_score = 0
 
-    # 2. Fear & Greed Score
     if fg_value <= 25:
         sentiment_score = 90
     elif fg_value >= 75:
@@ -704,7 +699,6 @@ def calculate_detailed_factor_scores(
     else:
         sentiment_score = (50 - fg_value) * 1.5
 
-    # 3. ETF Score
     if etf_net_flow >= 200.0:
         etf_score = 90
     elif etf_net_flow >= 50.0:
@@ -716,7 +710,6 @@ def calculate_detailed_factor_scores(
     else:
         etf_score = 0
 
-    # 4. Funding Score
     if funding_rate is not None:
         if funding_rate >= 0.0005:
             funding_score = -90
@@ -731,13 +724,11 @@ def calculate_detailed_factor_scores(
     else:
         funding_score = -50 if perf_val > 5.0 else (50 if perf_val < -5.0 else 10)
 
-    # 5. RSI Score
     if rsi_val is not None:
         rsi_score = max(-100.0, min(100.0, (50.0 - rsi_val) * 2.5))
     else:
         rsi_score = 70 if perf_val < -6.0 else (-70 if perf_val > 6.0 else 0)
 
-    # 6. Makro & VIX Score
     macro_points = 0
     if bond_change < -0.05:
         macro_points += 30
@@ -766,11 +757,8 @@ def calculate_detailed_factor_scores(
         macro_points -= 20
 
     macro_score = max(-100, min(100, macro_points))
-
-    # 7. Nachrichten & Zins-Sentiment Score
     news_sentiment_score = max(-100, min(100, news_score))
 
-    # 8. DeFi TVL & Krypto Liquidität Score
     tvl = llama_data.get("global_tvl_b", 85.0)
     if tvl >= 90.0:
         liq_score = 70
@@ -1578,7 +1566,7 @@ else:
 
 st.write("---")
 
-# GLOBALER MARKT & MAKRO-ÜBERSICHT (SAUBER FORMATED HTML FIX)
+# GLOBALER MARKT & MAKRO-ÜBERSICHT
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1598,36 +1586,35 @@ with st.container(border=True):
             bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
             st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
 
-        dxy_c = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
-        eur_c = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
-        gold_c = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
-        oil_c = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
-        vix_c = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
-        ndx_c = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
+        dxy_col = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
+        eur_col = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
+        gold_col = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
+        oil_col = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
+        vix_col = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
+        ndx_col = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
 
-        # KORRIGIERTE HTML-ZEILEN OHNE STERNE-KONFLIKTE
         st.markdown(
-            f'💵 <b>DXY:</b> <b>{ext_macro.get("dxy_val", 0):.2f}</b> (<span style="color:{dxy_c}; font-weight:bold;">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) | '
-            f'💶 <b>EUR/USD:</b> <b>{ext_macro.get("eurusd_val", 0):.4f}</b> (<span style="color:{eur_c}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
+            f'💵 <b>DXY:</b> {ext_macro.get("dxy_val", 0):.2f} (<span style="color:{dxy_col}; font-weight:bold;">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'💶 <b>EUR/USD:</b> {ext_macro.get("eurusd_val", 0):.4f} (<span style="color:{eur_col}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
         st.markdown(
-            f'🥇 <b>Gold:</b> <b>{ext_macro.get("gold_val", 0):,.1f} $</b> (<span style="color:{gold_c}; font-weight:bold;">{ext_macro.get("gold_chg", 0):+.2f}%</span>) | '
-            f'🛢 <b>Öl:</b> <b>{ext_macro.get("oil_val", 0):,.1f} $</b> (<span style="color:{oil_c}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
+            f'🥇 <b>Gold:</b> {ext_macro.get("gold_val", 0):,.1f} $ (<span style="color:{gold_col}; font-weight:bold;">{ext_macro.get("gold_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'🛢 <b>Öl:</b> {ext_macro.get("oil_val", 0):,.1f} $ (<span style="color:{oil_col}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
         st.markdown(
-            f'📉 <b>CBOE VIX (Panik):</b> <b>{vix_data.get("vix_val", 0):.1f}</b> (<span style="color:{vix_c}; font-weight:bold;">{vix_data.get("vix_chg", 0):+.2f}%</span>) | '
-            f'💻 <b>Nasdaq 100:</b> <span style="color:{ndx_c}; font-weight:bold;">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
+            f'📉 <b>CBOE VIX (Panik):</b> {vix_data.get("vix_val", 0):.1f} (<span style="color:{vix_col}; font-weight:bold;">{vix_data.get("vix_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'💻 <b>Nasdaq 100:</b> <span style="color:{ndx_col}; font-weight:bold;">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
             unsafe_allow_html=True,
         )
 
         etf_color = "green" if real_etf_flow >= 0 else "red"
         st.markdown(
-            f'🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> | '
-            f'💧 <b>DeFi TVL:</b> <b>{llama_data.get("global_tvl_b", 0):.1f} Mrd. $</b> | '
+            f'🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> &nbsp;|&nbsp; '
+            f'💧 <b>DeFi TVL:</b> <b>{llama_data.get("global_tvl_b", 0):.1f} Mrd. $</b> &nbsp;|&nbsp; '
             f'🪙 <b>BTC Dominanz:</b> <b>{btc_dom:.1f}%</b>',
             unsafe_allow_html=True,
         )
