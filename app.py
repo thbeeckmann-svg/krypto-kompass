@@ -37,7 +37,7 @@ hide_streamlit_style = """
         padding-right: 0.8rem !important;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 1.3rem !important;
+        font-size: 1.2rem !important;
     }
     div[data-testid="stExpander"] {
         border-radius: 8px !important;
@@ -82,7 +82,7 @@ with col_btn:
 aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# --- OBERES EINSTELLUNGS-MENÜ (AUFKLAPPBAR FÜR MOBILGERÄTE) ---
+# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (INKL. PORTFOLIO-TRANCHE) ---
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     
@@ -112,6 +112,10 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
             default=list(coins_map.keys()),
         )
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
+
+    # Platzhalter für die Portfolio-Tranche direkt im oberen Expander
+    st.write("---")
+    portfolio_tranche_placeholder = st.container()
 
 if auto_refresh_aktiv:
     st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
@@ -896,38 +900,6 @@ def log_prediction(coin, price, signal_text, fg_val):
         df_log.to_csv(LOG_FILE, index=False)
 
 
-def register_improvement(title, description, change_date=None):
-    if not change_date:
-        change_date = datetime.now().strftime("%d.%m.%Y")
-
-    if not os.path.exists(IMP_FILE):
-        df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
-    else:
-        try:
-            df_imp = pd.read_csv(IMP_FILE)
-            if "Datum" in df_imp.columns and "Änderungsdatum" not in df_imp.columns:
-                df_imp = df_imp.rename(columns={"Datum": "Änderungsdatum"})
-        except Exception:
-            df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
-
-    if not df_imp.empty and "Titel" in df_imp.columns:
-        df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
-
-    if not df_imp.empty and (df_imp["Titel"] == title).any():
-        df_imp.loc[df_imp["Titel"] == title, "Beschreibung"] = description
-        df_imp.loc[df_imp["Titel"] == title, "Änderungsdatum"] = change_date
-    else:
-        new_row = pd.DataFrame([{
-            "Änderungsdatum": change_date,
-            "Titel": title,
-            "Beschreibung": description,
-        }])
-        df_imp = pd.concat([new_row, df_imp], ignore_index=True)
-
-    df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
-    df_imp.to_csv(IMP_FILE, index=False)
-
-
 # Live-Daten abrufen
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
@@ -1055,7 +1027,7 @@ def generate_signal(
         )
 
 
-# --- 1. HAUPTBEREICH: MULTI-ASSET PORTFOLIO ALLOKATION ---
+# --- BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS ---
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
@@ -1157,9 +1129,9 @@ if current_data and len(current_data) > 0:
         cash_reserve_eur = max(0.0, round(geplantes_budget - total_invested_eur, 2))
         cash_reserve_pct = round((cash_reserve_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
 
-        # KOMPAKTE HANDY-ÜBERSICHT FÜR DAS PORTFOLIO
-        with st.container(border=True):
-            st.markdown("💼 **Portfolio-Tranche:**")
+        # RENDER PORTFOLIO-TRANCHE IN DEN OBEREN EINSTELLUNGS-EXPANDER
+        with portfolio_tranche_placeholder:
+            st.markdown("💼 **Portfolio-Tranche Allokation:**")
             col_p1, col_p2, col_p3 = st.columns(3)
             col_p1.metric("Gesamt", f"{geplantes_budget:,.0f} €")
             col_p2.metric("Krypto", f"{total_invested_eur:,.0f} €", f"{100.0 - cash_reserve_pct:.0f}%")
@@ -1219,7 +1191,6 @@ if current_data and len(current_data) > 0:
             coin_menge = investition_eur / price if price > 0 else 0.0
 
             with st.container(border=True):
-                # 1. DIREKT SICHTBARE SONDER-ÜBERSICHT (Kompakt auf Handy)
                 col1, col2 = st.columns([1.1, 1])
                 with col1:
                     st.markdown(f"#### 🪙 {coin}")
@@ -1228,7 +1199,6 @@ if current_data and len(current_data) > 0:
                     st.markdown(f"**Signal:** {signal}")
                     st.markdown(f"**Tranche:** **{investition_eur:,.2f} €** ({investition_pct}%)")
 
-                # 2. AUFKLAPPBARE DETAILS & INTEGRATIONEN
                 with st.expander("🔍 **Details, Analyse & Chart**", expanded=False):
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
@@ -1320,7 +1290,7 @@ else:
 
 st.write("---")
 
-# --- 2. GLOBALER MARKT & MAKRO-ÜBERSICHT (KOMPAKT & AUFKLAPPBAR) ---
+# --- GLOBALER MARKT & MAKRO-ÜBERSICHT ---
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1373,7 +1343,7 @@ with st.container(border=True):
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
             st.write(f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | **Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%)")
 
-# --- 3. EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT ---
+# --- EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT ---
 st.write("")
 with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
     st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage** im Vergleich zu Buy-and-Hold.")
@@ -1481,7 +1451,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# --- 4. EXPANDER: HISTORISCHES MAKRO-ARCHIV ---
+# --- EXPANDER: HISTORISCHES MAKRO-ARCHIV ---
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
