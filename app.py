@@ -112,21 +112,18 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. Aktuelle Krypto-Daten von Binance abrufen
+# 1. Aktuelle Krypto-Daten abrufen (Inkl. Cloud-Fallback)
 @st.cache_data(ttl=10)
 def get_current_data():
-  coins = {
-      "Bitcoin": "BTCEUR",
-      "Ethereum": "ETHEUR",
-      "Solana": "SOLEUR",
-      "Cardano": "ADAEUR",
-      "Bitcoin Cash": "BCHEUR",
-  }
+  coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+  yf_map = {"Bitcoin": "BTC-EUR", "Ethereum": "ETH-EUR", "Solana": "SOL-EUR", "Cardano": "ADA-EUR", "Bitcoin Cash": "BCH-EUR"}
   data = {}
+  
+  # 1. Versuch: Binance REST API
   try:
     for name, symbol in coins.items():
       url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-      response = requests.get(url, timeout=5)
+      response = requests.get(url, timeout=3)
       if response.status_code == 200:
         res_json = response.json()
         data[name] = {
@@ -134,10 +131,30 @@ def get_current_data():
             "eur_24h_change": float(res_json["priceChangePercent"]),
             "volume": float(res_json["quoteVolume"]),
         }
-    return data
-  except Exception as e:
-    st.error(f"Verbindungsfehler (Aktuell): {e}")
-    return None
+  except Exception:
+    pass
+
+  # 2. Fallback: Yahoo Finance (falls Binance z.B. auf US-Cloud-Servern geoblockt ist)
+  if len(data) < len(coins):
+    try:
+      for name, yf_sym in yf_map.items():
+        if name not in data:
+          t = yf.Ticker(yf_sym)
+          hist = t.history(period="5d")
+          if not hist.empty and len(hist) >= 1:
+            price = float(hist["Close"].iloc[-1])
+            prev = float(hist["Close"].iloc[-2]) if len(hist) >= 2 else float(hist["Open"].iloc[-1])
+            chg = ((price - prev) / prev) * 100.0 if prev > 0 else 0.0
+            vol = float(hist["Volume"].iloc[-1]) * price
+            data[name] = {
+                "eur": price,
+                "eur_24h_change": chg,
+                "volume": vol,
+            }
+    except Exception:
+      pass
+
+  return data if data else None
 
 
 # 2. ECHTE SPOT-ETF NET FLOWS ABRUFEN
@@ -316,29 +333,21 @@ def analyze_whale_activity(volume, change_24h):
     return ("🟡 Unauffällige On-Chain-Aktivität (Normaler Marktfluss)", 0)
 
 
-# ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT
+# ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT (Inkl. Fallback)
 @st.cache_data(ttl=30)
 def calculate_atr(symbol, limit=30):
+  symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
   try:
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit={limit}"
-    response = requests.get(url, timeout=5)
+    response = requests.get(url, timeout=3)
     if response.status_code == 200:
       raw = response.json()
       df = pd.DataFrame(
           raw,
           columns=[
-              "open_time",
-              "open",
-              "high",
-              "low",
-              "close",
-              "volume",
-              "close_time",
-              "quote_asset_volume",
-              "num_trades",
-              "taker_buy_base_asset_volume",
-              "taker_buy_quote_asset_volume",
-              "ignore",
+              "open_time", "open", "high", "low", "close", "volume",
+              "close_time", "quote_asset_volume", "num_trades",
+              "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
           ],
       )
       df["high"] = df["high"].astype(float)
@@ -354,35 +363,63 @@ def calculate_atr(symbol, limit=30):
       return float(atr)
   except Exception:
     pass
+
+  # Fallback yfinance
+  try:
+    yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
+    t = yf.Ticker(yf_sym)
+    df = t.history(period="60d")
+    if not df.empty and len(df) >= 15:
+      df["high"] = df["High"].astype(float)
+      df["low"] = df["Low"].astype(float)
+      df["close"] = df["Close"].astype(float)
+
+      df["tr1"] = df["high"] - df["low"]
+      df["tr2"] = abs(df["high"] - df["close"].shift(1))
+      df["tr3"] = abs(df["low"] - df["close"].shift(1))
+      df["tr"] = df[["tr1", "tr2", "tr3"]].max(axis=1)
+
+      atr = df["tr"].rolling(window=14).mean().iloc[-1]
+      return float(atr)
+  except Exception:
+    pass
   return 0.0
 
 
-# ECHTER RSI(14) RECHNER
+# ECHTER RSI(14) RECHNER (Inkl. Fallback)
 @st.cache_data(ttl=30)
 def get_real_rsi(symbol, limit=30):
+  symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
   try:
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit={limit}"
-    response = requests.get(url, timeout=5)
+    response = requests.get(url, timeout=3)
     if response.status_code == 200:
       raw = response.json()
       df = pd.DataFrame(
           raw,
           columns=[
-              "open_time",
-              "open",
-              "high",
-              "low",
-              "close",
-              "volume",
-              "close_time",
-              "quote_asset_volume",
-              "num_trades",
-              "taker_buy_base_asset_volume",
-              "taker_buy_quote_asset_volume",
-              "ignore",
+              "open_time", "open", "high", "low", "close", "volume",
+              "close_time", "quote_asset_volume", "num_trades",
+              "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
           ],
       )
       df["close"] = df["close"].astype(float)
+      delta = df["close"].diff()
+      gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+      loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+      rs = gain / loss
+      rsi = 100 - (100 / (1 + rs))
+      return round(float(rsi.iloc[-1]), 2)
+  except Exception:
+    pass
+
+  # Fallback yfinance
+  try:
+    yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
+    t = yf.Ticker(yf_sym)
+    df = t.history(period="60d")
+    if not df.empty and len(df) >= 15:
+      df["close"] = df["Close"].astype(float)
       delta = df["close"].diff()
       gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
       loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -407,7 +444,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
   symbol = futures_map.get(coin_name, "BTCUSDT")
   try:
     url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
-    response = requests.get(url, timeout=5)
+    response = requests.get(url, timeout=3)
     if response.status_code == 200:
       data = response.json()
       return float(data.get("lastFundingRate", 0.0001))
@@ -674,13 +711,32 @@ def get_automatic_macro_score(
 
 @st.cache_data(ttl=30)
 def get_historical_data(symbol, limit_days, interval, weekly=False):
+  symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
   try:
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit_days}"
-    response = requests.get(url, timeout=5)
+    response = requests.get(url, timeout=3)
     if response.status_code == 200:
       raw_data = response.json()
       dates = [datetime.fromtimestamp(entry[0] / 1000) for entry in raw_data]
       prices = [float(entry[4]) for entry in raw_data]
+      df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
+      df.set_index("Timestamp", inplace=True)
+      if weekly:
+        df = df.resample("W").mean()
+      return df.sort_index(ascending=True)
+  except Exception:
+    pass
+
+  # Fallback yfinance
+  try:
+    yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
+    t = yf.Ticker(yf_sym)
+    period = f"{max(limit_days + 10, 30)}d"
+    hist = t.history(period=period)
+    if not hist.empty:
+      hist = hist.tail(limit_days)
+      dates = hist.index.to_pydatetime()
+      prices = hist["Close"].astype(float).values
       df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
       df.set_index("Timestamp", inplace=True)
       if weekly:
@@ -1431,10 +1487,10 @@ with st.container(border=True):
   )
 
   st.markdown(
-      f'🥇 **Gold-Spot:** **{ext_macro.get("gold_val", 0):,.2f} $** (<span'
+      f'🥇 <b>Gold-Spot:</b> <b>{ext_macro.get("gold_val", 0):,.2f} $</b> (<span'
       f' style="color:{gold_c};">{ext_macro.get("gold_chg", 0):+.2f}%</span>)'
-      f' &nbsp;|&nbsp; 🛢 **WTI Öl:**'
-      f' **{ext_macro.get("oil_val", 0):,.2f} $** (<span'
+      f' &nbsp;|&nbsp; 🛢 <b>WTI Öl:</b>'
+      f' <b>{ext_macro.get("oil_val", 0):,.2f} $</b> (<span'
       f' style="color:{oil_c};">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
       unsafe_allow_html=True,
   )
