@@ -24,7 +24,7 @@ def check_password():
         eingabe = st.text_input("Passwort:", type="password")
         if st.button("Anmelden", width="stretch"):
             # Holt das Passwort aus Streamlit Secrets oder nutzt das Standardpasswort
-            passwort_soll = st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123")
+            passwort_soll = st.secrets.get("APP_PASSWORD", "j1gspinner2026!")
             if eingabe == passwort_soll:
                 st.session_state.authenticated = True
                 st.rerun()
