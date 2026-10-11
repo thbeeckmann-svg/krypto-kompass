@@ -13,6 +13,18 @@ st.set_page_config(
     page_title="Krypto-Kompass", page_icon="🪙", layout="centered"
 )
 
+# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Header, Menü, Footer, Manage App) ---
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stAppDeployButton {display: none;}
+    div[data-testid="stDecoration"] {display: none;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # --- PASSWORTSCHUTZ / LOGIN ---
 def check_password():
     if "authenticated" not in st.session_state:
@@ -24,7 +36,7 @@ def check_password():
         eingabe = st.text_input("Passwort:", type="password")
         if st.button("Anmelden", width="stretch"):
             # Holt das Passwort aus Streamlit Secrets oder nutzt das Standardpasswort
-            passwort_soll = st.secrets.get("APP_PASSWORD", "j1gspinner2026!")
+            passwort_soll = st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123")
             if eingabe == passwort_soll:
                 st.session_state.authenticated = True
                 st.rerun()
