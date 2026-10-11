@@ -1,0 +1,27 @@
+Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle
+2026-10-04 18:29:57,Bitcoin,75788.89,HALTEN,65,Binance Spot REST API
+2026-10-04 18:29:57,Ethereum,2398.72,HALTEN,65,Binance Spot REST API
+2026-10-04 18:29:58,Solana,107.99,HALTEN,65,Binance Spot REST API
+2026-10-05 20:45:54,Bitcoin,76367.71,VORSICHT,70,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-05 20:45:54,Ethereum,2414.89,VORSICHT,70,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-05 20:45:54,Solana,107.03,VORSICHT,70,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-06 17:13:05,Bitcoin,76923.73,HALTEN,73,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-06 17:13:05,Ethereum,2417.03,HALTEN,73,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-06 17:13:06,Solana,108.15,HALTEN,73,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-07 18:02:43,Bitcoin,74540.64,GEWINNE,71,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-07 18:02:43,Ethereum,2296.07,GEWINNE,71,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-07 18:02:44,Solana,104.26,GEWINNE,71,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-08 14:19:44,Bitcoin,73593.76,HALTEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-08 14:19:45,Ethereum,2263.31,HALTEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-08 14:19:46,Solana,101.02,HALTEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-09 14:30:01,Bitcoin,74133.05,HALTEN,59,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-09 14:30:02,Ethereum,2231.9,KAUFEN,59,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-09 14:30:03,Solana,98.64,KAUFEN,59,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-10 16:34:10,Bitcoin,74041.08,HALTEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-10 16:34:10,Ethereum,2237.14,KAUFEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-10 16:34:11,Solana,98.54,KAUFEN,64,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-11 20:05:25,Bitcoin,74816.22,HALTEN,61,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-11 20:05:26,Ethereum,2265.74,KAUFEN,61,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-11 20:05:28,Solana,100.08,KAUFEN,61,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-11 20:05:29,Cardano,0.2263,KAUFEN,61,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)
+2026-10-11 20:05:30,Bitcoin Cash,253.8,KAUFEN,61,Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)

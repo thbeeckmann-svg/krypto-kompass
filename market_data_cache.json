@@ -1,0 +1,25 @@
+{
+    "last_fetched": "2026-10-04 15:08:52",
+    "source": "Binance API, Alternative.me (Fear & Greed) & Yahoo Finance (^TNX US 10Y Bond Yield)",
+    "current_data": {
+        "Bitcoin": {
+            "eur": 75693.49,
+            "eur_24h_change": 0.318,
+            "volume": 2806292.5796679
+        },
+        "Ethereum": {
+            "eur": 2396.95,
+            "eur_24h_change": 0.522,
+            "volume": 1298943.422641
+        },
+        "Solana": {
+            "eur": 107.86,
+            "eur_24h_change": 1.429,
+            "volume": 1149944.75058
+        }
+    },
+    "fg_value": 65,
+    "fg_text": "Greed",
+    "bond_val": 5.2769999504089355,
+    "bond_change": 0.037000179290771484
+}
