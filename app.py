@@ -127,7 +127,7 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# BATCH-ABRUF DER BINANCE-DATEN
+# 1. BATCH-ABRUF DER BINANCE-DATEN (SCHNELL & EINZELNER CALL)
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -173,7 +173,7 @@ def get_current_data():
     return data if data else None
 
 
-# Spot-ETF Net Flows
+# 2. Spot-ETF Net Flows
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     try:
@@ -194,7 +194,7 @@ def get_real_spot_etf_flows():
     return 145.20
 
 
-# Fear & Greed Index
+# 3. Fear & Greed Index
 @st.cache_data(ttl=60)
 def get_fear_and_greed():
     try:
@@ -209,7 +209,96 @@ def get_fear_and_greed():
     return 50, "Neutral"
 
 
-# Makro-Daten & Leitmärkte
+# 4. NEU: VOLATILITÄTSINDEX (VIX) & NASDAQ 100
+@st.cache_data(ttl=60)
+def get_vix_and_nasdaq():
+    data = {"vix_val": 18.0, "vix_chg": 0.0, "nasdaq_val": 0.0, "nasdaq_chg": 0.0}
+    try:
+        vix = yf.Ticker("^VIX")
+        v_hist = vix.history(period="5d")
+        if not v_hist.empty:
+            val = vix_hist = v_hist["Close"].iloc[-1]
+            prev = v_hist["Close"].iloc[0]
+            data["vix_val"] = float(val)
+            data["vix_chg"] = float(((val - prev) / prev) * 100) if prev > 0 else 0.0
+
+        ndx = yf.Ticker("^NDX")
+        n_hist = ndx.history(period="5d")
+        if not n_hist.empty:
+            n_val = n_hist["Close"].iloc[-1]
+            n_prev = n_hist["Close"].iloc[0]
+            data["nasdaq_val"] = float(n_val)
+            data["nasdaq_chg"] = float(((n_val - n_prev) / n_prev) * 100) if n_prev > 0 else 0.0
+    except Exception:
+        pass
+    return data
+
+
+# 5. NEU: CRYPTOCOMPARE ECHTZEIT-NACHRICHTEN & ZINS-SENTIMENT
+@st.cache_data(ttl=300)
+def get_news_sentiment_score():
+    url = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
+    bullish_keywords = [
+        "rate cut", "fed cuts", "ecb cuts", "approval", "bullish", "inflow",
+        "adoption", "stimulus", "easing", "rate cuts", "lower rates", "dovish",
+        "fed rate cut", "soft landing", "gdp growth"
+    ]
+    bearish_keywords = [
+        "rate hike", "inflation high", "recession", "sec lawsuit", "ban",
+        "crackdown", "outflow", "dump", "tariff", "rate hikes", "higher rates",
+        "hawkish", "fed rate hike", "stagflation", "cpi surge"
+    ]
+    
+    sentiment_points = 0
+    headlines = []
+
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            articles = response.json().get("Data", [])[:15]
+            for art in articles:
+                title = art.get("title", "")
+                body = art.get("body", "")
+                text = f"{title} {body}".lower()
+
+                if title:
+                    headlines.append(title)
+
+                for word in bullish_keywords:
+                    if word in text:
+                        sentiment_points += 15
+                for word in bearish_keywords:
+                    if word in text:
+                        sentiment_points -= 15
+
+        score = max(-100, min(100, sentiment_points))
+        return score, headlines[:5]
+    except Exception:
+        return 0, []
+
+
+# 6. NEU: DEFILAMA STABLECOIN-LIQUIDITÄTS-INDEX (USDT + USDC)
+@st.cache_data(ttl=600)
+def get_stablecoin_marketcap_trend():
+    try:
+        url = "https://stablecoins.llama.fi/stablecoins?includePrices=true"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json().get("peggedAssets", [])
+            usdt = next((item for item in data if item.get("symbol") == "USDT"), None)
+            usdc = next((item for item in data if item.get("symbol") == "USDC"), None)
+            
+            usdt_mcap = usdt.get("circulating", {}).get("peggedUSD", 0) if usdt else 0
+            usdc_mcap = usdc.get("circulating", {}).get("peggedUSD", 0) if usdc else 0
+            
+            total_mcap_b = (usdt_mcap + usdc_mcap) / 1_000_000_000.0
+            return round(total_mcap_b, 2)
+    except Exception:
+        pass
+    return 135.0  # Fallback in Mrd. USD
+
+
+# 7. Makro-Daten & Leitmärkte
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -461,12 +550,14 @@ def generate_local_self_learning_optimizations(
     df_archive, df_market, current_data
 ):
     default_weights = {
-        "Trend & Momentum": 20.0,
-        "ETF Net Flows": 20.0,
-        "Makro (Zins/Aktien/Währung)": 20.0,
+        "Trend & Momentum": 15.0,
+        "ETF Net Flows": 15.0,
+        "Makro (Zins/Aktien/Währung/VIX)": 15.0,
         "Fear & Greed Index": 15.0,
         "Funding Rates & Derivate": 15.0,
         "RSI & Volatilität": 10.0,
+        "Nachrichten & Zins-Sentiment": 10.0,
+        "Krypto-Liquidität (Stablecoins)": 5.0,
     }
 
     if df_archive is None or df_archive.empty or not current_data:
@@ -502,11 +593,11 @@ def generate_local_self_learning_optimizations(
     optimizations = []
 
     if buy_signals > 0 and (failed_buys / buy_signals) > 0.3:
-        weights["Trend & Momentum"] -= 3.0
-        weights["Makro (Zins/Aktien/Währung)"] += 2.0
-        weights["Fear & Greed Index"] += 1.0
+        weights["Trend & Momentum"] -= 2.0
+        weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
+        weights["Nachrichten & Zins-Sentiment"] += 1.0
         optimizations.append(
-            "⚠️ **Anpassung Kauf-Signale:** Makro- und Sentiment-Einfluss gestärkt."
+            "⚠️ **Anpassung Kauf-Signale:** Makro-, Zins- und News-Einfluss gestärkt."
         )
 
     if sell_signals > 0 and (failed_sells / sell_signals) > 0.3:
@@ -519,7 +610,7 @@ def generate_local_self_learning_optimizations(
 
     if not optimizations:
         optimizations.append(
-            "✅ **System-Status Optimal:** 5-Jahres-Gewichtungen aktiv."
+            "✅ **System-Status Optimal:** 8-Faktoren-Gewichtungen aktiv."
         )
 
     report = (
@@ -527,14 +618,16 @@ def generate_local_self_learning_optimizations(
 #### 📊 Autonom berechnete Gewichtungs-Optimierung (Quant Self-Tuning)
 Basierend auf **{total_predictions} ausgewerteten Zyklen** in `prediction_log.csv`:
 
-| Indikator | 5-Jahres-Basis | Aktive, dynamische Live-Gewichtung |
+| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
 | :--- | :---: | :---: |
-| **Trend & Momentum** | 20,0 % | **{weights['Trend & Momentum']:.1f} %** |
-| **ETF Net Flows (Spot)** | 20,0 % | **{weights['ETF Net Flows']:.1f} %** |
-| **Makro (Zins/Aktien/Währung)** | 20,0 % | **{weights['Makro (Zins/Aktien/Währung)']:.1f} %** |
+| **Trend & Momentum** | 15,0 % | **{weights['Trend & Momentum']:.1f} %** |
+| **ETF Net Flows (Spot)** | 15,0 % | **{weights['ETF Net Flows']:.1f} %** |
+| **Makro & VIX** | 15,0 % | **{weights['Makro (Zins/Aktien/Währung/VIX)']:.1f} %** |
 | **Fear & Greed Index** | 15,0 % | **{weights['Fear & Greed Index']:.1f} %** |
 | **Funding Rates & Derivate** | 15,0 % | **{weights['Funding Rates & Derivate']:.1f} %** |
 | **RSI & Volatilität** | 10,0 % | **{weights['RSI & Volatilität']:.1f} %** |
+| **Nachrichten & Zins-Sentiment** | 10,0 % | **{weights['Nachrichten & Zins-Sentiment']:.1f} %** |
+| **Stablecoin-Liquidität** | 5,0 % | **{weights['Krypto-Liquidität (Stablecoins)']:.1f} %** |
 
 ##### 💡 Autonome System-Erkenntnisse & Anpassungen:
 """
@@ -553,20 +646,26 @@ def calculate_detailed_factor_scores(
     eurozone_market,
     stock_indices,
     etf_net_flow,
+    vix_data,
+    news_score,
+    stablecoin_mcap,
     rsi_val=None,
     funding_rate=None,
     weights=None,
 ):
     if weights is None:
         weights = {
-            "Trend & Momentum": 20.0,
-            "ETF Net Flows": 20.0,
-            "Makro (Zins/Aktien/Währung)": 20.0,
+            "Trend & Momentum": 15.0,
+            "ETF Net Flows": 15.0,
+            "Makro (Zins/Aktien/Währung/VIX)": 15.0,
             "Fear & Greed Index": 15.0,
             "Funding Rates & Derivate": 15.0,
             "RSI & Volatilität": 10.0,
+            "Nachrichten & Zins-Sentiment": 10.0,
+            "Krypto-Liquidität (Stablecoins)": 5.0,
         }
 
+    # 1. Trend Score
     if perf_val <= -7.5:
         trend_score = 80
     elif perf_val <= -3.0:
@@ -578,6 +677,7 @@ def calculate_detailed_factor_scores(
     else:
         trend_score = 0
 
+    # 2. Fear & Greed Score
     if fg_value <= 25:
         sentiment_score = 90
     elif fg_value >= 75:
@@ -585,6 +685,7 @@ def calculate_detailed_factor_scores(
     else:
         sentiment_score = (50 - fg_value) * 1.5
 
+    # 3. ETF Score
     if etf_net_flow >= 200.0:
         etf_score = 90
     elif etf_net_flow >= 50.0:
@@ -596,6 +697,7 @@ def calculate_detailed_factor_scores(
     else:
         etf_score = 0
 
+    # 4. Funding Score
     if funding_rate is not None:
         if funding_rate >= 0.0005:
             funding_score = -90
@@ -610,16 +712,18 @@ def calculate_detailed_factor_scores(
     else:
         funding_score = -50 if perf_val > 5.0 else (50 if perf_val < -5.0 else 10)
 
+    # 5. RSI Score
     if rsi_val is not None:
         rsi_score = max(-100.0, min(100.0, (50.0 - rsi_val) * 2.5))
     else:
         rsi_score = 70 if perf_val < -6.0 else (-70 if perf_val > 6.0 else 0)
 
+    # 6. Makro & VIX Score
     macro_points = 0
     if bond_change < -0.05:
-        macro_points += 40
+        macro_points += 30
     elif bond_change > 0.05:
-        macro_points -= 40
+        macro_points -= 30
 
     if asian_markets:
         n_chg = asian_markets.get("Nikkei_225", {}).get("change", 0.0)
@@ -633,23 +737,45 @@ def calculate_detailed_factor_scores(
         sp500_chg = stock_indices.get("SP500", {}).get("chg", 0.0)
         dax_chg = stock_indices.get("DAX", {}).get("chg", 0.0)
         if sp500_chg > 0.5 or dax_chg > 0.5:
-            macro_points += 20
+            macro_points += 15
         elif sp500_chg < -0.5 or dax_chg < -0.5:
-            macro_points -= 20
+            macro_points -= 15
+
+    vix_val = vix_data.get("vix_val", 18.0)
+    nasdaq_chg = vix_data.get("nasdaq_chg", 0.0)
+
+    if vix_val > 28.0:
+        macro_points -= 30  # Panik am Aktienmarkt
+    elif vix_val < 15.0:
+        macro_points += 20  # Starkes Risk-on Klima
+
+    if nasdaq_chg > 1.0:
+        macro_points += 20
+    elif nasdaq_chg < -1.0:
+        macro_points -= 20
 
     macro_score = max(-100, min(100, macro_points))
+
+    # 7. Nachrichten & Zins-Sentiment Score
+    news_sentiment_score = max(-100, min(100, news_score))
+
+    # 8. Krypto-Liquidität Score (Stablecoin Mcap)
+    if stablecoin_mcap >= 130.0:
+        liq_score = 60
+    elif stablecoin_mcap >= 100.0:
+        liq_score = 30
+    else:
+        liq_score = -20
 
     return {
         f"Trend & Momentum ({weights['Trend & Momentum']:.0f}%)": trend_score,
         f"Spot-ETF Flows ({weights['ETF Net Flows']:.0f}%)": etf_score,
-        f"Makro: Zins/Aktien/Währung ({weights['Makro (Zins/Aktien/Währung)']:.0f}%)": (
-            macro_score
-        ),
+        f"Makro & VIX ({weights['Makro (Zins/Aktien/Währung/VIX)']:.0f}%)": macro_score,
         f"Fear & Greed ({weights['Fear & Greed Index']:.0f}%)": sentiment_score,
-        f"Funding & Derivate ({weights['Funding Rates & Derivate']:.0f}%)": (
-            funding_score
-        ),
+        f"Funding & Derivate ({weights['Funding Rates & Derivate']:.0f}%)": funding_score,
         f"RSI & Volatilität ({weights['RSI & Volatilität']:.0f}%)": rsi_score,
+        f"News & Zins-Sentiment ({weights['Nachrichten & Zins-Sentiment']:.0f}%)": news_sentiment_score,
+        f"Stablecoin Liq. ({weights['Krypto-Liquidität (Stablecoins)']:.0f}%)": liq_score,
     }
 
 
@@ -662,18 +788,23 @@ def get_automatic_macro_score(
     eurozone_market,
     stock_indices,
     etf_net_flow,
+    vix_data,
+    news_score,
+    stablecoin_mcap,
     rsi_val=None,
     funding_rate=None,
     weights=None,
 ):
     if weights is None:
         weights = {
-            "Trend & Momentum": 20.0,
-            "ETF Net Flows": 20.0,
-            "Makro (Zins/Aktien/Währung)": 20.0,
+            "Trend & Momentum": 15.0,
+            "ETF Net Flows": 15.0,
+            "Makro (Zins/Aktien/Währung/VIX)": 15.0,
             "Fear & Greed Index": 15.0,
             "Funding Rates & Derivate": 15.0,
             "RSI & Volatilität": 10.0,
+            "Nachrichten & Zins-Sentiment": 10.0,
+            "Krypto-Liquidität (Stablecoins)": 5.0,
         }
 
     scores = calculate_detailed_factor_scores(
@@ -685,6 +816,9 @@ def get_automatic_macro_score(
         eurozone_market,
         stock_indices,
         etf_net_flow,
+        vix_data,
+        news_score,
+        stablecoin_mcap,
         rsi_val=rsi_val,
         funding_rate=funding_rate,
         weights=weights,
@@ -696,14 +830,18 @@ def get_automatic_macro_score(
             total += score_val * (weights["Trend & Momentum"] / 100.0)
         elif "Spot-ETF" in key:
             total += score_val * (weights["ETF Net Flows"] / 100.0)
-        elif "Makro" in key:
-            total += score_val * (weights["Makro (Zins/Aktien/Währung)"] / 100.0)
+        elif "Makro & VIX" in key:
+            total += score_val * (weights["Makro (Zins/Aktien/Währung/VIX)"] / 100.0)
         elif "Fear & Greed" in key:
             total += score_val * (weights["Fear & Greed Index"] / 100.0)
         elif "Funding" in key:
             total += score_val * (weights["Funding Rates & Derivate"] / 100.0)
         elif "RSI" in key:
             total += score_val * (weights["RSI & Volatilität"] / 100.0)
+        elif "News & Zins" in key:
+            total += score_val * (weights["Nachrichten & Zins-Sentiment"] / 100.0)
+        elif "Stablecoin Liq" in key:
+            total += score_val * (weights["Krypto-Liquidität (Stablecoins)"] / 100.0)
 
     return 1 if total > 20 else (-1 if total < -20 else 0)
 
@@ -772,6 +910,9 @@ def log_market_data(
     etf_flow,
     ext_macro,
     stock_indices,
+    vix_data,
+    news_score,
+    stablecoin_mcap,
 ):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
@@ -806,11 +947,15 @@ def log_market_data(
         "Gold_Veränderung": round(ext_macro.get("gold_chg", 0.0), 2),
         "Oil_Wert": round(ext_macro.get("oil_val", 0.0), 2),
         "Oil_Veränderung": round(ext_macro.get("oil_chg", 0.0), 2),
+        "VIX_Wert": round(vix_data.get("vix_val", 0.0), 2),
+        "Nasdaq_Veränderung": round(vix_data.get("nasdaq_chg", 0.0), 2),
+        "News_Sentiment_Score": news_score,
+        "Stablecoin_Mcap_MrdUSD": stablecoin_mcap,
         "Datenquelle": (
             "Alternative.me, Yahoo Finance (^TNX, ^GSPC, ^GDAXI, ^N225, ^HSI, ^STOXX50E,"
-            " DX-Y.NYB, EURUSD=X, GC=F, CL=F), Coinglass/Farside"
+            " DX-Y.NYB, EURUSD=X, GC=F, CL=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama"
         ),
-        "Quellen_Hinzugefügt_Am": "2026-10-05",
+        "Quellen_Hinzugefügt_Am": "2026-10-12",
     }
 
     if os.path.exists(MARKET_LOG_FILE):
@@ -890,6 +1035,9 @@ def generate_signal(
     eurozone_market,
     stock_indices,
     etf_net_flow,
+    vix_data,
+    news_score,
+    stablecoin_mcap,
     zeitraum,
     weights,
     rsi_val=None,
@@ -904,6 +1052,9 @@ def generate_signal(
         eurozone_market,
         stock_indices,
         etf_net_flow,
+        vix_data,
+        news_score,
+        stablecoin_mcap,
         rsi_val=rsi_val,
         funding_rate=funding_rate,
         weights=weights,
@@ -948,7 +1099,7 @@ def generate_signal(
         )
 
 
-# LIVE-DATEN ABRUFEN & SELBSTLERN-OPTIMIERUNG BERECHNEN
+# LIVE-DATEN ABRUFEN & NEUE QUELLEN INTEGRATION
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
 stock_indices = get_stock_indices()
@@ -956,6 +1107,11 @@ asian_markets = get_asian_markets()
 eurozone_market = get_eurozone_market()
 fg_value, fg_text = get_fear_and_greed()
 real_etf_flow = get_real_spot_etf_flows()
+
+# Neue Datenquellen
+vix_data = get_vix_and_nasdaq()
+news_score, top_headlines = get_news_sentiment_score()
+stablecoin_mcap = get_stablecoin_marketcap_trend()
 
 current_data = get_current_data()
 
@@ -1002,21 +1158,26 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
     
     if manuelle_gewichtung:
         st.caption("Verstelle die Slider, um die Einflüsse im Decision Engine Score manuell zu gewichten.")
-        col_w1, col_w2, col_w3 = st.columns(3)
-        w_trend = col_w1.slider("Trend & Momentum (%)", 0, 50, 20)
-        w_etf = col_w2.slider("ETF Net Flows (%)", 0, 50, 20)
-        w_makro = col_w3.slider("Makro (%)", 0, 50, 20)
-        w_fg = col_w1.slider("Fear & Greed (%)", 0, 50, 15)
-        w_fund = col_w2.slider("Funding Rate (%)", 0, 50, 15)
-        w_rsi = col_w3.slider("RSI & Volatilität (%)", 0, 50, 10)
+        col_w1, col_w2, col_w3, col_w4 = st.columns(4)
+        w_trend = col_w1.slider("Trend & Momentum (%)", 0, 50, 15)
+        w_etf = col_w2.slider("ETF Net Flows (%)", 0, 50, 15)
+        w_makro = col_w3.slider("Makro & VIX (%)", 0, 50, 15)
+        w_fg = col_w4.slider("Fear & Greed (%)", 0, 50, 15)
+
+        w_fund = col_w1.slider("Funding Rate (%)", 0, 50, 15)
+        w_rsi = col_w2.slider("RSI & Vola (%)", 0, 50, 10)
+        w_news = col_w3.slider("News/Zinsen (%)", 0, 50, 10)
+        w_liq = col_w4.slider("Stablecoin Liq. (%)", 0, 50, 5)
 
         active_weights = {
             "Trend & Momentum": float(w_trend),
             "ETF Net Flows": float(w_etf),
-            "Makro (Zins/Aktien/Währung)": float(w_makro),
+            "Makro (Zins/Aktien/Währung/VIX)": float(w_makro),
             "Fear & Greed Index": float(w_fg),
             "Funding Rates & Derivate": float(w_fund),
             "RSI & Volatilität": float(w_rsi),
+            "Nachrichten & Zins-Sentiment": float(w_news),
+            "Krypto-Liquidität (Stablecoins)": float(w_liq),
         }
     else:
         active_weights = dynamic_weights
@@ -1063,6 +1224,9 @@ log_market_data(
     real_etf_flow,
     ext_macro,
     stock_indices,
+    vix_data,
+    news_score,
+    stablecoin_mcap,
 )
 
 # BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS
@@ -1101,6 +1265,9 @@ if current_data and len(current_data) > 0:
                 eurozone_market,
                 stock_indices,
                 real_etf_flow,
+                vix_data,
+                news_score,
+                stablecoin_mcap,
                 zeitraum_wahl,
                 active_weights,
                 rsi_val=rsi_value,
@@ -1220,7 +1387,6 @@ if current_data and len(current_data) > 0:
             with st.container(border=True):
                 col1, col2 = st.columns([1.2, 1])
 
-                # Dynamische Farbwahl für die Prozentzahl oben rechts
                 perf_color_hex = "#2ecc71" if perf_val >= 0 else "#e74c3c"
                 bg_badge = "rgba(46, 204, 113, 0.12)" if perf_val >= 0 else "rgba(231, 76, 60, 0.12)"
 
@@ -1232,7 +1398,6 @@ if current_data and len(current_data) > 0:
                     st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{price:,.2f} €</div>", unsafe_allow_html=True)
                 
                 with col2:
-                    # RECHTS OBEN: GROSSE PROZENTZAHL DER VERÄNDERUNG
                     st.markdown(
                         f"""
                         <div style='text-align: right; margin-bottom: 2px;'>
@@ -1249,7 +1414,6 @@ if current_data and len(current_data) > 0:
 
                 st.write("---")
 
-                # SIGNAL & TRANCHE IN DER KARTEN-ÜBERSICHT
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
                     st.markdown(f"**Signal:** {signal}")
@@ -1268,8 +1432,8 @@ if current_data and len(current_data) > 0:
                     st.markdown("##### 📊 Live-Marktindikatoren & Wal-Tracker")
                     st.caption(
                         f"🏛 **Spot-ETF Net Flow:** **{real_etf_flow:+.1f}M $**\n\n"
-                        f"📊 **RSI (14):** **{rsi_value:.1f}**\n\n"
-                        f"⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%**\n\n"
+                        f"📊 **RSI (14):** **{rsi_value:.1f}** | ⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%**\n\n"
+                        f"📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 💵 **Stablecoin Supply:** **{stablecoin_mcap:.1f} Mrd. $**\n\n"
                         f"🐋 **Wal-Aktivität:** {whale_msg}"
                     )
 
@@ -1290,6 +1454,9 @@ if current_data and len(current_data) > 0:
                         eurozone_market,
                         stock_indices,
                         real_etf_flow,
+                        vix_data,
+                        news_score,
+                        stablecoin_mcap,
                         rsi_val=rsi_value,
                         funding_rate=funding_rate_val,
                         weights=active_weights,
@@ -1312,7 +1479,7 @@ if current_data and len(current_data) > 0:
                             ),
                             tooltip=["Indikator", "Score"],
                         )
-                        .properties(height=200)
+                        .properties(height=240)
                     )
                     st.altair_chart(chart_scores, width="stretch")
 
@@ -1322,11 +1489,10 @@ if current_data and len(current_data) > 0:
                             unsafe_allow_html=True,
                         )
 
-                    # CHARTING MIT PREZISEN ACHSEN FORMATIERUNGEN
+                    # CHARTING
                     if df_history is not None and not df_history.empty:
                         df_chart = df_history.reset_index().copy()
 
-                        # Exponential Moving Average (EMA)
                         if len(df_chart) >= 5:
                             span_val = min(20, len(df_chart))
                             df_chart["EMA"] = df_chart["Kurs"].ewm(span=span_val, adjust=False).mean()
@@ -1335,15 +1501,13 @@ if current_data and len(current_data) > 0:
                         puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
 
-                        # DYNAMISCHE X-ACHSEN-FORMATIERUNG
                         if zeitraum_wahl == "24 Stunden":
                             date_format = "%H:%M"
                         elif zeitraum_wahl in ["7 Tage", "30 Tage"]:
                             date_format = "%d.%m."
-                        else:  # 90 Tage, 6 Monate, 1 Jahr -> Monatsnamen anzeigen
+                        else:
                             date_format = "%b %y"
 
-                        # DYNAMISCHE Y-ACHSEN-FORMATIERUNG
                         y_format = ",.2f" if max_p < 10 else ",.0f"
 
                         base = alt.Chart(df_chart).encode(
@@ -1420,6 +1584,8 @@ with st.container(border=True):
         eur_c = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
         gold_c = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
         oil_c = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
+        vix_c = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
+        ndx_c = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
 
         st.markdown(
             f'💵 **DXY:** **{ext_macro.get("dxy_val", 0):.2f}** (<span style="color:{dxy_c};">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) | '
@@ -1433,9 +1599,16 @@ with st.container(border=True):
             unsafe_allow_html=True,
         )
 
+        st.markdown(
+            f'📉 **CBOE VIX (Panik):** **{vix_data.get("vix_val", 0):.1f}** (<span style="color:{vix_c};">{vix_data.get("vix_chg", 0):+.2f}%</span>) | '
+            f'💻 **Nasdaq 100:** <span style="color:{ndx_c};">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
+            unsafe_allow_html=True,
+        )
+
         etf_color = "green" if real_etf_flow >= 0 else "red"
         st.markdown(
-            f'🏦 **Spot-ETF Nettofluss:** <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span>',
+            f'🏦 **Spot-ETF Nettofluss:** <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> | '
+            f'💧 **Stablecoin Liquidität:** **{stablecoin_mcap:.1f} Mrd. $**',
             unsafe_allow_html=True,
         )
 
@@ -1448,6 +1621,13 @@ with st.container(border=True):
             n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
             st.write(f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | **Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%)")
+
+        st.write("---")
+        st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
+        if top_headlines:
+            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (CryptoCompare):")
+            for h in top_headlines:
+                st.markdown(f"- *{h}*")
 
 # EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT
 st.write("")
