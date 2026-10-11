@@ -104,57 +104,6 @@ with col_btn:
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ) ---
-with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
-    col_e1, col_e2 = st.columns(2)
-    
-    with col_e1:
-        zeitraum_wahl = st.selectbox(
-            "Rückblick-Zeitraum wählen:",
-            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr"],
-            index=1,
-        )
-        investment_wahl = st.selectbox(
-            "Geplantes Ordervolumen (Tranche):",
-            [100, 500, 1000, 2500, 5000, "Individuell"],
-            index=1,
-        )
-        if investment_wahl == "Individuell":
-            geplantes_budget = st.number_input(
-                "Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0
-            )
-        else:
-            geplantes_budget = float(investment_wahl)
-
-    with col_e2:
-        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
-        ausgewaehlte_coins = st.multiselect(
-            "Kryptowährungen anzeigen:",
-            options=list(coins_map.keys()),
-            default=list(coins_map.keys()),
-        )
-        auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
-
-    st.write("---")
-    portfolio_tranche_placeholder = st.container()
-
-if auto_refresh_aktiv:
-    st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
-
-# Konfiguration je nach Zeitraum
-if zeitraum_wahl == "24 Stunden":
-    limit_anzahl, interval, wöchentlich = 24, "1h", False
-elif zeitraum_wahl == "7 Tage":
-    limit_anzahl, interval, wöchentlich = 7, "1d", False
-elif zeitraum_wahl == "30 Tage":
-    limit_anzahl, interval, wöchentlich = 30, "1d", False
-elif zeitraum_wahl == "90 Tage":
-    limit_anzahl, interval, wöchentlich = 90, "1d", True
-elif zeitraum_wahl == "6 Monate":
-    limit_anzahl, interval, wöchentlich = 180, "1d", True
-else:  # 1 Jahr
-    limit_anzahl, interval, wöchentlich = 365, "1d", True
-
 LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
@@ -178,27 +127,32 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. Aktuelle Krypto-Daten abrufen
+# 1. OPTIMIERT: BATCH-ABRUF DER BINANCE-DATEN (EINER FÜR ALLE COINS)
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
     yf_map = {"Bitcoin": "BTC-EUR", "Ethereum": "ETH-EUR", "Solana": "SOL-EUR", "Cardano": "ADA-EUR", "Bitcoin Cash": "BCH-EUR"}
     data = {}
     
+    # Batch-Anfrage an Binance
     try:
-        for name, symbol in coins.items():
-            url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-            response = requests.get(url, timeout=3)
-            if response.status_code == 200:
-                res_json = response.json()
-                data[name] = {
-                    "eur": float(res_json["lastPrice"]),
-                    "eur_24h_change": float(res_json["priceChangePercent"]),
-                    "volume": float(res_json["quoteVolume"]),
-                }
+        url = "https://api.binance.com/api/v3/ticker/24hr"
+        response = requests.get(url, timeout=4)
+        if response.status_code == 200:
+            res_json = response.json()
+            ticker_dict = {item["symbol"]: item for item in res_json if "symbol" in item}
+            for name, symbol in coins.items():
+                if symbol in ticker_dict:
+                    item = ticker_dict[symbol]
+                    data[name] = {
+                        "eur": float(item["lastPrice"]),
+                        "eur_24h_change": float(item["priceChangePercent"]),
+                        "volume": float(item["quoteVolume"]),
+                    }
     except Exception:
         pass
 
+    # Fallback einzeln über yFinance
     if len(data) < len(coins):
         try:
             for name, yf_sym in yf_map.items():
@@ -764,7 +718,6 @@ def get_automatic_macro_score(
 def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
     
-    # 1. Binance API versuchen
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit_anzahl}"
         response = requests.get(url, timeout=4)
@@ -786,7 +739,6 @@ def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     except Exception:
         pass
 
-    # 2. Yahoo Finance Fallback
     try:
         yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
         t = yf.Ticker(yf_sym)
@@ -1002,7 +954,7 @@ def generate_signal(
         )
 
 
-# --- LIVE-DATEN ABRUFEN & LOGGEN ---
+# --- LIVE-DATEN ABRUFEN & SELBSTLERN-OPTIMIERUNG BERECHNEN ---
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
 stock_indices = get_stock_indices()
@@ -1010,6 +962,91 @@ asian_markets = get_asian_markets()
 eurozone_market = get_eurozone_market()
 fg_value, fg_text = get_fear_and_greed()
 real_etf_flow = get_real_spot_etf_flows()
+
+current_data = get_current_data()
+
+df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
+df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
+
+local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(
+    df_archive_check, df_market_check, current_data
+)
+
+# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ) ---
+with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
+    col_e1, col_e2 = st.columns(2)
+    
+    with col_e1:
+        zeitraum_wahl = st.selectbox(
+            "Rückblick-Zeitraum wählen:",
+            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr"],
+            index=1,
+        )
+        investment_wahl = st.selectbox(
+            "Geplantes Ordervolumen (Tranche):",
+            [100, 500, 1000, 2500, 5000, "Individuell"],
+            index=1,
+        )
+        if investment_wahl == "Individuell":
+            geplantes_budget = st.number_input(
+                "Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0
+            )
+        else:
+            geplantes_budget = float(investment_wahl)
+
+    with col_e2:
+        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+        ausgewaehlte_coins = st.multiselect(
+            "Kryptowährungen anzeigen:",
+            options=list(coins_map.keys()),
+            default=list(coins_map.keys()),
+        )
+        auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
+
+    st.write("---")
+    # 3. MANUELLE INDIKATOR-GEWICHTUNG
+    manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert KI-Automatik)", value=False)
+    
+    if manuelle_gewichtung:
+        st.caption("Verstelle die Slider, um die Einflüsse im Decision Engine Score manuell zu gewichten.")
+        col_w1, col_w2, col_w3 = st.columns(3)
+        w_trend = col_w1.slider("Trend & Momentum (%)", 0, 50, 20)
+        w_etf = col_w2.slider("ETF Net Flows (%)", 0, 50, 20)
+        w_makro = col_w3.slider("Makro (%)", 0, 50, 20)
+        w_fg = col_w1.slider("Fear & Greed (%)", 0, 50, 15)
+        w_fund = col_w2.slider("Funding Rate (%)", 0, 50, 15)
+        w_rsi = col_w3.slider("RSI & Volatilität (%)", 0, 50, 10)
+
+        active_weights = {
+            "Trend & Momentum": float(w_trend),
+            "ETF Net Flows": float(w_etf),
+            "Makro (Zins/Aktien/Währung)": float(w_makro),
+            "Fear & Greed Index": float(w_fg),
+            "Funding Rates & Derivate": float(w_fund),
+            "RSI & Volatilität": float(w_rsi),
+        }
+    else:
+        active_weights = dynamic_weights
+
+    st.write("---")
+    portfolio_tranche_placeholder = st.container()
+
+if auto_refresh_aktiv:
+    st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
+
+# Konfiguration je nach Zeitraum
+if zeitraum_wahl == "24 Stunden":
+    limit_anzahl, interval, wöchentlich = 24, "1h", False
+elif zeitraum_wahl == "7 Tage":
+    limit_anzahl, interval, wöchentlich = 7, "1d", False
+elif zeitraum_wahl == "30 Tage":
+    limit_anzahl, interval, wöchentlich = 30, "1d", False
+elif zeitraum_wahl == "90 Tage":
+    limit_anzahl, interval, wöchentlich = 90, "1d", True
+elif zeitraum_wahl == "6 Monate":
+    limit_anzahl, interval, wöchentlich = 180, "1d", True
+else:  # 1 Jahr
+    limit_anzahl, interval, wöchentlich = 365, "1d", True
 
 nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
 nikkei_chg = asian_markets.get("Nikkei_225", {}).get("change") if asian_markets else 0.0
@@ -1033,15 +1070,6 @@ log_market_data(
     real_etf_flow,
     ext_macro,
     stock_indices,
-)
-
-current_data = get_current_data()
-
-df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
-df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
-
-local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(
-    df_archive_check, df_market_check, current_data
 )
 
 # --- BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS ---
@@ -1081,7 +1109,7 @@ if current_data and len(current_data) > 0:
                 stock_indices,
                 real_etf_flow,
                 zeitraum_wahl,
-                dynamic_weights,
+                active_weights,
                 rsi_val=rsi_value,
                 funding_rate=funding_rate_val,
             )
@@ -1173,7 +1201,7 @@ if current_data and len(current_data) > 0:
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
-        # EINZELNE KRYPTO-KARTEN MIT LOGOS, SYMBOLEN UND FEHLERFREIEM CHART
+        # EINZELNE KRYPTO-KARTEN
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1244,7 +1272,7 @@ if current_data and len(current_data) > 0:
                         real_etf_flow,
                         rsi_val=rsi_value,
                         funding_rate=funding_rate_val,
-                        weights=dynamic_weights,
+                        weights=active_weights,
                     )
 
                     df_scores = pd.DataFrame(
@@ -1276,13 +1304,18 @@ if current_data and len(current_data) > 0:
                             unsafe_allow_html=True,
                         )
 
-                    # --- SAUBERER KURSVERLAUF-CHART (FEHLERFREIER 24H/6M/1Y VERLAUF) ---
+                    # --- 2. OPTIMIERTES CHARTING (INTERAKTIV + EMA-LINIE + TRANSPARENTE RASTER) ---
                     if df_history is not None and not df_history.empty:
-                        min_p, max_p = df_history["Kurs"].min(), df_history["Kurs"].max()
+                        df_chart = df_history.reset_index().copy()
+
+                        # Exponential Moving Average (EMA) berechnen
+                        if len(df_chart) >= 5:
+                            span_val = min(20, len(df_chart))
+                            df_chart["EMA"] = df_chart["Kurs"].ewm(span=span_val, adjust=False).mean()
+
+                        min_p, max_p = df_chart["Kurs"].min(), df_chart["Kurs"].max()
                         puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
-                        
-                        df_chart = df_history.reset_index()
 
                         date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%m.%y" if zeitraum_wahl in ["6 Monate", "1 Jahr"] else "%d.%m.")
 
@@ -1295,7 +1328,7 @@ if current_data and len(current_data) > 0:
                                     labelAngle=0,
                                     grid=True,
                                     gridDash=[2, 2],
-                                    gridColor="#f0f0f0",
+                                    gridColor="rgba(150, 150, 150, 0.15)",  # Für Dark- & Light-Mode
                                     tickCount=6,
                                 ),
                             ),
@@ -1303,12 +1336,22 @@ if current_data and len(current_data) > 0:
                                 "Kurs:Q",
                                 title="€",
                                 scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
-                                axis=alt.Axis(format=",.0f", grid=True, gridColor="#f0f0f0"),
+                                axis=alt.Axis(format=",.0f", grid=True, gridColor="rgba(150, 150, 150, 0.15)"),
                             ),
                         ).properties(height=220)
 
                         area = base.mark_area(opacity=0.12, color=chart_color)
                         line = base.mark_line(color=chart_color, strokeWidth=2)
+                        
+                        chart_layers = area + line
+
+                        # EMA Trend-Linie einblenden (Orange gestrichelt)
+                        if "EMA" in df_chart.columns:
+                            ema_line = base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(
+                                y=alt.Y("EMA:Q")
+                            )
+                            chart_layers = chart_layers + ema_line
+
                         points = base.mark_point(size=40, color=chart_color, filled=True).encode(
                             tooltip=[
                                 alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
@@ -1316,7 +1359,9 @@ if current_data and len(current_data) > 0:
                             ]
                         )
 
-                        st.altair_chart(area + line + points, width="stretch")
+                        # .interactive() für Wischen und Zoomen auf Handys & Desktop
+                        final_chart = (chart_layers + points).interactive()
+                        st.altair_chart(final_chart, width="stretch")
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
@@ -1458,7 +1503,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         )
                         .properties(height=220)
                     )
-                    st.altair_chart(chart_bt, width="stretch")
+                    st.altair_chart(chart_bt.interactive(), width="stretch")
 
                 if total_evaluated > 0:
                     hit_rate = (correct_hits / total_evaluated) * 100
