@@ -171,25 +171,33 @@ def get_current_data():
     return data if data else None
 
 
-# 2. Spot-ETF Net Flows
+# 2. Spot-ETF Net Flows (Zweistufiger Abruf mit dynamic fallback)
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     try:
         url = "https://api.coinglass.com/api/pro/v1/futures/bitcoin_etf/flow"
         headers = {"accept": "application/json", "User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=5)
-
+        response = requests.get(url, headers=headers, timeout=4)
         if response.status_code == 200:
             res_json = response.json()
             if res_json.get("success") and res_json.get("data"):
-                latest_flow = (
-                    float(res_json["data"][-1].get("totalNetIngressUsd", 0))
-                    / 1000000.0
-                )
-                return round(latest_flow, 2)
+                latest_flow = float(res_json["data"][-1].get("totalNetIngressUsd", 0)) / 1_000_000.0
+                if latest_flow != 0:
+                    return round(latest_flow, 2)
     except Exception:
         pass
-    return 145.20
+
+    try:
+        url_alt = "https://open-api.coinglass.com/public/v1/bitcoin/etf/flow"
+        res = requests.get(url_alt, timeout=4)
+        if res.status_code == 200:
+            data = res.json().get("data", [])
+            if data:
+                return round(float(data[-1].get("totalNetFlow", 0)), 2)
+    except Exception:
+        pass
+
+    return 0.0
 
 
 # 3. Fear & Greed Index
@@ -1566,7 +1574,7 @@ else:
 
 st.write("---")
 
-# GLOBALER MARKT & MAKRO-ÜBERSICHT
+# GLOBALER MARKT & MAKRO-ÜBERSICHT (SAUBER FORMATED HTML FIX)
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1743,28 +1751,78 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# EXPANDER: HISTORISCHES MAKRO-ARCHIV
+# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (VOLLSTÄNDIG)
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
-                macro_display_rows = []
+                # 1. Datum sauber formatieren
+                df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
+                df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
+                df_market_log = df_market_log.sort_values(by="ParsedDate", ascending=False)
+
+                # 2. VISUELLE HISTORIE-CHARTS
+                st.markdown("##### 📈 Historische Trend-Entwicklung")
+                col_mc1, col_mc2 = st.columns(2)
+
+                with col_mc1:
+                    chart_fg_log = (
+                        alt.Chart(df_market_log)
+                        .mark_line(point=True, color="#f1c40f", strokeWidth=2)
+                        .encode(
+                            x=alt.X("Datum_Clean:N", title=None, sort=None),
+                            y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title="Fear & Greed"),
+                            tooltip=["Datum_Clean", "FearGreed_Wert", "FearGreed_Stimmung"],
+                        )
+                        .properties(height=180, title="Sentiment-Verlauf")
+                    )
+                    st.altair_chart(chart_fg_log, width="stretch")
+
+                with col_mc2:
+                    vix_col = "VIX_Wert" if "VIX_Wert" in df_market_log.columns else "FearGreed_Wert"
+                    chart_vix_log = (
+                        alt.Chart(df_market_log)
+                        .mark_line(point=True, color="#e74c3c", strokeWidth=2)
+                        .encode(
+                            x=alt.X("Datum_Clean:N", title=None, sort=None),
+                            y=alt.Y(f"{vix_col}:Q", title="VIX Index"),
+                            tooltip=["Datum_Clean", vix_col, "US_10J_Rendite"],
+                        )
+                        .properties(height=180, title="Marktpanik (VIX) Verlauf")
+                    )
+                    st.altair_chart(chart_vix_log, width="stretch")
+
+                st.write("---")
+                st.markdown("##### 📋 Vollständige Makro-Historie")
+
+                # 3. TABELLE MIT ALLER RELEVANTEN MAKRO- UND ZINSDATEN
+                display_cols = []
                 for idx, row in df_market_log.iterrows():
-                    d_val = row.get("Datum", "-")
-                    fg_w = row.get("FearGreed_Wert", 50)
-                    us_y = row.get("US_10J_Rendite", 0.0)
-                    etf_flow_log = row.get("Spot_ETF_NetFlow_MUSD", 0.0)
-                    
-                    macro_display_rows.append({
-                        "Datum": d_val,
-                        "Fear & Greed": f"{fg_w} / 100",
-                        "US 10J Zins": f"{us_y:.2f}%",
-                        "Spot-ETF NetFlow": f"{etf_flow_log:+.1f}M $",
+                    d_clean = row.get("Datum_Clean", "-")
+                    fg_w = row.get("FearGreed_Wert", None)
+                    us_y = row.get("US_10J_Rendite", None)
+                    etf_fl = row.get("Spot_ETF_NetFlow_MUSD", None)
+                    vix_w = row.get("VIX_Wert", None)
+                    news_s = row.get("News_Sentiment_Score", None)
+                    gold_w = row.get("Gold_Wert", None)
+                    tvl_w = row.get("DeFi_TVL_MrdUSD", None)
+                    btc_d = row.get("BTC_Dominanz_Pct", None)
+
+                    display_cols.append({
+                        "Datum": d_clean,
+                        "Fear & Greed": f"{int(fg_w)} / 100" if pd.notnull(fg_w) else "-",
+                        "US 10J Zins": f"{us_y:.2f}%" if pd.notnull(us_y) and us_y > 0 else "-",
+                        "Spot-ETF Flow": f"{etf_fl:+.1f}M $" if pd.notnull(etf_fl) else "-",
+                        "VIX (Panik)": f"{vix_w:.1f}" if pd.notnull(vix_w) and vix_w > 0 else "-",
+                        "News Score": f"{int(news_s):+d}" if pd.notnull(news_s) else "-",
+                        "Gold ($)": f"{gold_w:,.1f}" if pd.notnull(gold_w) and gold_w > 0 else "-",
+                        "DeFi TVL": f"{tvl_w:.1f}B $" if pd.notnull(tvl_w) and tvl_w > 0 else "-",
+                        "BTC Dom.": f"{btc_d:.1f}%" if pd.notnull(btc_d) and btc_d > 0 else "-",
                     })
 
-                df_macro_table = pd.DataFrame(macro_display_rows)
+                df_macro_table = pd.DataFrame(display_cols)
                 st.dataframe(df_macro_table, width="stretch", hide_index=True)
         except Exception as e:
             st.warning(f"Fehler beim Laden des Makro-Archivs: {e}")
