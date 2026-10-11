@@ -954,7 +954,7 @@ def log_market_data(
         "FearGreed_Wert": fg_val,
         "FearGreed_Stimmung": fg_txt,
         "US_10J_Rendite": round(bond_val, 2) if bond_val else 0.0,
-        "US_10J_Veränderung": round(bond_chg, 2) if bond_chg else 0.0,
+        "US_10J_Veränderung": round(bond_change, 2) if bond_change else 0.0,
         "SP500_Wert": sp500_v,
         "SP500_Veränderung": sp500_c,
         "DAX_Wert": dax_v,
