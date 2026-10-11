@@ -171,7 +171,7 @@ def get_current_data():
     return data if data else None
 
 
-# 2. Spot-ETF Net Flows (Zweistufiger Abruf mit dynamic fallback)
+# 2. Spot-ETF Net Flows
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     try:
@@ -974,6 +974,9 @@ def log_market_data(
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market = pd.read_csv(MARKET_LOG_FILE)
+            for k in market_entry.keys():
+                if k not in df_market.columns:
+                    df_market[k] = np.nan
             df_market["DateOnly"] = df_market["Datum"].astype(str).str[:10]
             if date_only in df_market["DateOnly"].values:
                 for key, val in market_entry.items():
@@ -1574,7 +1577,7 @@ else:
 
 st.write("---")
 
-# GLOBALER MARKT & MAKRO-ÜBERSICHT (SAUBER FORMATED HTML FIX)
+# GLOBALER MARKT & MAKRO-ÜBERSICHT
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1751,55 +1754,80 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (VOLLSTÄNDIG)
+# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (KORRIGIERTE DARSTELLUNG)
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
-                # 1. Datum sauber formatieren
+                # 1. Datum parsen
                 df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
                 df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
-                df_market_log = df_market_log.sort_values(by="ParsedDate", ascending=False)
 
-                # 2. VISUELLE HISTORIE-CHARTS
+                # 2. CHART-DATEN: Chronologisch aufsteigend (alt -> neu, links -> rechts)
+                df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
+
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
                 col_mc1, col_mc2 = st.columns(2)
 
                 with col_mc1:
-                    chart_fg_log = (
-                        alt.Chart(df_market_log)
-                        .mark_line(point=True, color="#f1c40f", strokeWidth=2)
-                        .encode(
-                            x=alt.X("Datum_Clean:N", title=None, sort=None),
-                            y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title="Fear & Greed"),
-                            tooltip=["Datum_Clean", "FearGreed_Wert", "FearGreed_Stimmung"],
+                    st.markdown("###### 📊 Sentiment-Verlauf (Fear & Greed)")
+                    df_fg = df_chart_data[df_chart_data["FearGreed_Wert"].notnull() & (df_chart_data["FearGreed_Wert"] > 0)]
+                    if not df_fg.empty:
+                        chart_fg_log = (
+                            alt.Chart(df_fg)
+                            .mark_line(point=True, color="#f1c40f", strokeWidth=2)
+                            .encode(
+                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                                y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title="Fear & Greed"),
+                                tooltip=[
+                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                    alt.Tooltip("FearGreed_Wert:Q", title="Wert"),
+                                    alt.Tooltip("FearGreed_Stimmung:N", title="Stimmung"),
+                                ],
+                            )
+                            .properties(height=180)
                         )
-                        .properties(height=180, title="Sentiment-Verlauf")
-                    )
-                    st.altair_chart(chart_fg_log, width="stretch")
+                        st.altair_chart(chart_fg_log, width="stretch")
+                    else:
+                        st.info("Keine Daten für Sentiment verfügbar.")
 
                 with col_mc2:
-                    vix_col = "VIX_Wert" if "VIX_Wert" in df_market_log.columns else "FearGreed_Wert"
-                    chart_vix_log = (
-                        alt.Chart(df_market_log)
-                        .mark_line(point=True, color="#e74c3c", strokeWidth=2)
-                        .encode(
-                            x=alt.X("Datum_Clean:N", title=None, sort=None),
-                            y=alt.Y(f"{vix_col}:Q", title="VIX Index"),
-                            tooltip=["Datum_Clean", vix_col, "US_10J_Rendite"],
+                    st.markdown("###### 📉 Marktpanik (VIX Index)")
+                    if "VIX_Wert" in df_chart_data.columns:
+                        df_vix = df_chart_data[df_chart_data["VIX_Wert"].notnull() & (df_chart_data["VIX_Wert"] > 0)]
+                    else:
+                        df_vix = pd.DataFrame()
+
+                    if not df_vix.empty:
+                        min_vix = max(0, df_vix["VIX_Wert"].min() - 2)
+                        max_vix = df_vix["VIX_Wert"].max() + 2
+                        chart_vix_log = (
+                            alt.Chart(df_vix)
+                            .mark_line(point=True, color="#e74c3c", strokeWidth=2)
+                            .encode(
+                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                                y=alt.Y("VIX_Wert:Q", scale=alt.Scale(domain=[min_vix, max_vix]), title="VIX Index"),
+                                tooltip=[
+                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                    alt.Tooltip("VIX_Wert:Q", title="VIX"),
+                                ],
+                            )
+                            .properties(height=180)
                         )
-                        .properties(height=180, title="Marktpanik (VIX) Verlauf")
-                    )
-                    st.altair_chart(chart_vix_log, width="stretch")
+                        st.altair_chart(chart_vix_log, width="stretch")
+                    else:
+                        st.info("Noch nicht genügend VIX-Historie geloggt.")
 
                 st.write("---")
                 st.markdown("##### 📋 Vollständige Makro-Historie")
 
-                # 3. TABELLE MIT ALLER RELEVANTEN MAKRO- UND ZINSDATEN
+                # 3. TABELLEN-DATEN: Absteigend (neueste Einträge zuerst)
+                df_table_data = df_market_log.sort_values(by="ParsedDate", ascending=False)
+
                 display_cols = []
-                for idx, row in df_market_log.iterrows():
+                for idx, row in df_table_data.iterrows():
                     d_clean = row.get("Datum_Clean", "-")
                     fg_w = row.get("FearGreed_Wert", None)
                     us_y = row.get("US_10J_Rendite", None)
@@ -1812,7 +1840,7 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
 
                     display_cols.append({
                         "Datum": d_clean,
-                        "Fear & Greed": f"{int(fg_w)} / 100" if pd.notnull(fg_w) else "-",
+                        "Fear & Greed": f"{int(fg_w)} / 100" if pd.notnull(fg_w) and fg_w > 0 else "-",
                         "US 10J Zins": f"{us_y:.2f}%" if pd.notnull(us_y) and us_y > 0 else "-",
                         "Spot-ETF Flow": f"{etf_fl:+.1f}M $" if pd.notnull(etf_fl) else "-",
                         "VIX (Panik)": f"{vix_w:.1f}" if pd.notnull(vix_w) and vix_w > 0 else "-",
