@@ -13,6 +13,30 @@ st.set_page_config(
     page_title="Krypto-Kompass", page_icon="🪙", layout="centered"
 )
 
+# --- PASSWORTSCHUTZ / LOGIN ---
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.markdown("## 🔒 Krypto-Kompass — Zugangsschutz")
+        st.info("Bitte gib das Passwort ein, um auf den Krypto-Kompass zuzugreifen.")
+        eingabe = st.text_input("Passwort:", type="password")
+        if st.button("Anmelden", width="stretch"):
+            # Holt das Passwort aus Streamlit Secrets oder nutzt das Standardpasswort
+            passwort_soll = st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123")
+            if eingabe == passwort_soll:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Falsches Passwort!")
+        return False
+    return True
+
+if not check_password():
+    st.stop()
+# ------------------------------
+
 # Automatischer Refresh alle 5 Minuten (300.000 Millisekunden)
 auto_refresh_aktiv = st.sidebar.checkbox(
     "🔄 Auto-Refresh (alle 5 Min.) aktiv", value=True
@@ -44,13 +68,7 @@ if investment_wahl == "Individuell":
 else:
   geplantes_budget = float(investment_wahl)
 
-coins_map = {
-    "Bitcoin": "BTCEUR",
-    "Ethereum": "ETHEUR",
-    "Solana": "SOLEUR",
-    "Cardano": "ADAEUR",
-    "Bitcoin Cash": "BCHEUR",
-}
+coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
 ausgewaehlte_coins = st.sidebar.multiselect(
     "Kryptowährungen anzeigen:",
     options=list(coins_map.keys()),
@@ -134,7 +152,7 @@ def get_current_data():
   except Exception:
     pass
 
-  # 2. Fallback: Yahoo Finance (falls Binance z.B. auf US-Cloud-Servern geoblockt ist)
+  # 2. Fallback: Yahoo Finance
   if len(data) < len(coins):
     try:
       for name, yf_sym in yf_map.items():
@@ -259,20 +277,20 @@ def get_extended_macro_data():
 
 @st.cache_data(ttl=60)
 def get_stock_indices():
-  indices = {"SP500": "^GSPC", "DAX": "^GDAXI"}
-  results = {}
-  try:
-    for name, ticker in indices.items():
-      t = yf.Ticker(ticker)
-      hist = t.history(period="5d")
-      if not hist.empty:
-        val = hist["Close"].iloc[-1]
-        prev = hist["Close"].iloc[0]
-        chg = ((val - prev) / prev) * 100
-        results[name] = {"val": val, "chg": chg}
-  except Exception:
-    pass
-  return results
+    indices = {"SP500": "^GSPC", "DAX": "^GDAXI"}
+    results = {}
+    try:
+        for name, ticker in indices.items():
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d")
+            if not hist.empty:
+                val = hist["Close"].iloc[-1]
+                prev = hist["Close"].iloc[0]
+                chg = ((val - prev) / prev) * 100
+                results[name] = {"val": val, "chg": chg}
+    except Exception:
+        pass
+    return results
 
 
 @st.cache_data(ttl=60)
@@ -333,7 +351,7 @@ def analyze_whale_activity(volume, change_24h):
     return ("🟡 Unauffällige On-Chain-Aktivität (Normaler Marktfluss)", 0)
 
 
-# ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT (Inkl. Fallback)
+# ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT
 @st.cache_data(ttl=30)
 def calculate_atr(symbol, limit=30):
   symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -386,7 +404,7 @@ def calculate_atr(symbol, limit=30):
   return 0.0
 
 
-# ECHTER RSI(14) RECHNER (Inkl. Fallback)
+# ECHTER RSI(14) RECHNER
 @st.cache_data(ttl=30)
 def get_real_rsi(symbol, limit=30):
   symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -444,7 +462,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
   symbol = futures_map.get(coin_name, "BTCUSDT")
   try:
     url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
-    response = requests.get(url, timeout=3)
+    response = requests.get(url, timeout=5)
     if response.status_code == 200:
       data = response.json()
       return float(data.get("lastFundingRate", 0.0001))
@@ -1545,17 +1563,13 @@ with st.expander(
   if os.path.exists(LOG_FILE):
     try:
       df_archive = pd.read_csv(LOG_FILE)
-
+      
       if "Datenquelle" not in df_archive.columns:
         df_archive["Datenquelle"] = "Binance Spot REST API"
       else:
-        df_archive["Datenquelle"] = df_archive["Datenquelle"].fillna(
-            "Binance Spot REST API"
-        )
-        df_archive["Datenquelle"] = df_archive["Datenquelle"].replace(
-            ["None", "nan", ""], "Binance Spot REST API"
-        )
-
+        df_archive["Datenquelle"] = df_archive["Datenquelle"].fillna("Binance Spot REST API")
+        df_archive["Datenquelle"] = df_archive["Datenquelle"].replace(["None", "nan", ""], "Binance Spot REST API")
+      
       df_archive.to_csv(LOG_FILE, index=False)
 
       if not df_archive.empty and current_data:
@@ -1783,33 +1797,16 @@ with st.expander(
           fg_w = row.get("FearGreed_Wert", 50)
           us_y = row.get("US_10J_Rendite", 0.0)
           us_c = row.get("US_10J_Veränderung", 0.0)
-
+          
           # Sicheres Auslesen von nan Werten, die als Platzhalter fungieren sollen
-          dxy_v = (
-              row["DXY_Wert"]
-              if "DXY_Wert" in row and pd.notna(row["DXY_Wert"])
-              else None
-          )
-          gold_v = (
-              row["Gold_Wert"]
-              if "Gold_Wert" in row and pd.notna(row["Gold_Wert"])
-              else None
-          )
-          sp500_v = (
-              row["SP500_Wert"]
-              if "SP500_Wert" in row and pd.notna(row["SP500_Wert"])
-              else None
-          )
-          dax_v = (
-              row["DAX_Wert"]
-              if "DAX_Wert" in row and pd.notna(row["DAX_Wert"])
-              else None
-          )
+          dxy_v = row["DXY_Wert"] if "DXY_Wert" in row and pd.notna(row["DXY_Wert"]) else None
+          gold_v = row["Gold_Wert"] if "Gold_Wert" in row and pd.notna(row["Gold_Wert"]) else None
+          sp500_v = row["SP500_Wert"] if "SP500_Wert" in row and pd.notna(row["SP500_Wert"]) else None
+          dax_v = row["DAX_Wert"] if "DAX_Wert" in row and pd.notna(row["DAX_Wert"]) else None
 
           etf_flow_log = (
               row["Spot_ETF_NetFlow_MUSD"]
-              if "Spot_ETF_NetFlow_MUSD" in row
-              and pd.notna(row["Spot_ETF_NetFlow_MUSD"])
+              if "Spot_ETF_NetFlow_MUSD" in row and pd.notna(row["Spot_ETF_NetFlow_MUSD"])
               else 0.0
           )
           q_date = (
