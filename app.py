@@ -12,6 +12,23 @@ import yfinance as yf
 # Zeitzone für Deutschland (MEZ / MESZ)
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
+# Krypto-Währungssymbole und offizielle Logo-URLs
+CRYPTO_SYMBOLS = {
+    "Bitcoin": "₿",
+    "Ethereum": "Ξ",
+    "Solana": "◎",
+    "Cardano": "₳",
+    "Bitcoin Cash": "₿",
+}
+
+CRYPTO_LOGOS = {
+    "Bitcoin": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+    "Ethereum": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+    "Solana": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+    "Cardano": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+    "Bitcoin Cash": "https://assets.coingecko.com/coins/images/780/small/bitcoin-cash-circle.png",
+}
+
 # Seiten-Konfiguration
 st.set_page_config(
     page_title="Krypto-Kompass",
@@ -899,38 +916,6 @@ def log_prediction(coin, price, signal_text, fg_val):
         df_log.to_csv(LOG_FILE, index=False)
 
 
-def register_improvement(title, description, change_date=None):
-    if not change_date:
-        change_date = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y")
-
-    if not os.path.exists(IMP_FILE):
-        df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
-    else:
-        try:
-            df_imp = pd.read_csv(IMP_FILE)
-            if "Datum" in df_imp.columns and "Änderungsdatum" not in df_imp.columns:
-                df_imp = df_imp.rename(columns={"Datum": "Änderungsdatum"})
-        except Exception:
-            df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
-
-    if not df_imp.empty and "Titel" in df_imp.columns:
-        df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
-
-    if not df_imp.empty and (df_imp["Titel"] == title).any():
-        df_imp.loc[df_imp["Titel"] == title, "Beschreibung"] = description
-        df_imp.loc[df_imp["Titel"] == title, "Änderungsdatum"] = change_date
-    else:
-        new_row = pd.DataFrame([{
-            "Änderungsdatum": change_date,
-            "Titel": title,
-            "Beschreibung": description,
-        }])
-        df_imp = pd.concat([new_row, df_imp], ignore_index=True)
-
-    df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
-    df_imp.to_csv(IMP_FILE, index=False)
-
-
 def generate_signal(
     perf_val,
     volume,
@@ -1170,7 +1155,7 @@ if current_data and len(current_data) > 0:
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
-        # EINZELNE KRYPTO-KARTEN MIT AUFKLAPPBAREM DETAILS-BUTTON
+        # EINZELNE KRYPTO-KARTEN MIT OFFIZIELLEN LOGOS UND WÄHRUNGSSYMBOLEN
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1190,11 +1175,17 @@ if current_data and len(current_data) > 0:
             investition_pct = res["investition_pct"]
 
             coin_menge = investition_eur / price if price > 0 else 0.0
+            
+            logo_url = CRYPTO_LOGOS.get(coin, "")
+            symbol = CRYPTO_SYMBOLS.get(coin, "")
 
             with st.container(border=True):
-                col1, col2 = st.columns([1.1, 1])
+                col1, col2 = st.columns([1.2, 1])
                 with col1:
-                    st.markdown(f"#### 🪙 {coin}")
+                    st.markdown(
+                        f"#### <img src='{logo_url}' width='22' style='vertical-align: middle; margin-right: 6px;'> {coin} ({symbol})",
+                        unsafe_allow_html=True,
+                    )
                     st.metric("Kurs", f"{price:,.2f} €", f"{change_24h:+.1f}%")
                 with col2:
                     st.markdown(f"**Signal:** {signal}")
@@ -1204,7 +1195,7 @@ if current_data and len(current_data) > 0:
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
                     st.markdown(
-                        f"🎯 **Empfehlung:** ca. **{coin_menge:.4f} {coin.upper()}** kaufen "
+                        f"🎯 **Empfehlung:** ca. **{coin_menge:.4f} {coin.upper()} {symbol}** kaufen "
                         f"({investition_eur:,.2f} € aus der Tranche)."
                     )
                     
