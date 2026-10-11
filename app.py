@@ -127,14 +127,13 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. OPTIMIERT: BATCH-ABRUF DER BINANCE-DATEN (EINER FÜR ALLE COINS)
+# BATCH-ABRUF DER BINANCE-DATEN
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
     yf_map = {"Bitcoin": "BTC-EUR", "Ethereum": "ETH-EUR", "Solana": "SOL-EUR", "Cardano": "ADA-EUR", "Bitcoin Cash": "BCH-EUR"}
     data = {}
     
-    # Batch-Anfrage an Binance
     try:
         url = "https://api.binance.com/api/v3/ticker/24hr"
         response = requests.get(url, timeout=4)
@@ -152,7 +151,6 @@ def get_current_data():
     except Exception:
         pass
 
-    # Fallback einzeln über yFinance
     if len(data) < len(coins):
         try:
             for name, yf_sym in yf_map.items():
@@ -175,7 +173,7 @@ def get_current_data():
     return data if data else None
 
 
-# 2. Spot-ETF Net Flows abrufen
+# Spot-ETF Net Flows
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     try:
@@ -196,7 +194,7 @@ def get_real_spot_etf_flows():
     return 145.20
 
 
-# 3. Fear & Greed Index abrufen
+# Fear & Greed Index
 @st.cache_data(ttl=60)
 def get_fear_and_greed():
     try:
@@ -211,7 +209,7 @@ def get_fear_and_greed():
     return 50, "Neutral"
 
 
-# 4. Makro-Daten & Leitmärkte
+# Makro-Daten & Leitmärkte
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -229,14 +227,10 @@ def get_macro_bond_yield():
 @st.cache_data(ttl=60)
 def get_extended_macro_data():
     data = {
-        "dxy_val": 0.0,
-        "dxy_chg": 0.0,
-        "eurusd_val": 0.0,
-        "eurusd_chg": 0.0,
-        "gold_val": 0.0,
-        "gold_chg": 0.0,
-        "oil_val": 0.0,
-        "oil_chg": 0.0,
+        "dxy_val": 0.0, "dxy_chg": 0.0,
+        "eurusd_val": 0.0, "eurusd_chg": 0.0,
+        "gold_val": 0.0, "gold_chg": 0.0,
+        "oil_val": 0.0, "oil_chg": 0.0,
     }
     try:
         dxy = yf.Ticker("DX-Y.NYB")
@@ -954,7 +948,7 @@ def generate_signal(
         )
 
 
-# --- LIVE-DATEN ABRUFEN & SELBSTLERN-OPTIMIERUNG BERECHNEN ---
+# LIVE-DATEN ABRUFEN & SELBSTLERN-OPTIMIERUNG BERECHNEN
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
 stock_indices = get_stock_indices()
@@ -972,7 +966,7 @@ local_learning_report, dynamic_weights = generate_local_self_learning_optimizati
     df_archive_check, df_market_check, current_data
 )
 
-# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ) ---
+# EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ)
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     
@@ -1004,7 +998,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
     st.write("---")
-    # 3. MANUELLE INDIKATOR-GEWICHTUNG
     manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert KI-Automatik)", value=False)
     
     if manuelle_gewichtung:
@@ -1072,7 +1065,7 @@ log_market_data(
     stock_indices,
 )
 
-# --- BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS ---
+# BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
@@ -1226,14 +1219,41 @@ if current_data and len(current_data) > 0:
 
             with st.container(border=True):
                 col1, col2 = st.columns([1.2, 1])
+
+                # Dynamische Farbwahl für die Prozentzahl oben rechts
+                perf_color_hex = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+                bg_badge = "rgba(46, 204, 113, 0.12)" if perf_val >= 0 else "rgba(231, 76, 60, 0.12)"
+
                 with col1:
                     st.markdown(
                         f"#### <img src='{logo_url}' width='22' style='vertical-align: middle; margin-right: 6px;'> {coin} ({symbol})",
                         unsafe_allow_html=True,
                     )
-                    st.metric("Kurs", f"{price:,.2f} €", f"{change_24h:+.1f}%")
+                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{price:,.2f} €</div>", unsafe_allow_html=True)
+                
                 with col2:
+                    # RECHTS OBEN: GROSSE PROZENTZAHL DER VERÄNDERUNG
+                    st.markdown(
+                        f"""
+                        <div style='text-align: right; margin-bottom: 2px;'>
+                            <span style='background-color: {bg_badge}; color: {perf_color_hex}; font-size: 1.25rem; font-weight: bold; padding: 4px 10px; border-radius: 8px; display: inline-block;'>
+                                {perf_val:+.2f}%
+                            </span>
+                        </div>
+                        <div style='text-align: right; font-size: 0.75rem; color: gray;'>
+                            Veränderung ({zeitraum_wahl})
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.write("---")
+
+                # SIGNAL & TRANCHE IN DER KARTEN-ÜBERSICHT
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
                     st.markdown(f"**Signal:** {signal}")
+                with col_s2:
                     st.markdown(f"**Tranche:** **{investition_eur:,.2f} €** ({investition_pct}%)")
 
                 with st.expander("🔍 **Details, Analyse & Chart**", expanded=False):
@@ -1297,18 +1317,16 @@ if current_data and len(current_data) > 0:
                     st.altair_chart(chart_scores, width="stretch")
 
                     if hist_price > 0:
-                        perf_color = "green" if perf_val >= 0 else "red"
                         st.markdown(
-                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.2f} €** | "
-                            f'Entwicklung: <span style="color:{perf_color}; font-weight:bold;">{perf_val:+.2f}%</span>',
+                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.2f} €** | Aktuell: **{price:,.2f} €**",
                             unsafe_allow_html=True,
                         )
 
-                    # --- 2. OPTIMIERTES CHARTING (INTERAKTIV + EMA-LINIE + TRANSPARENTE RASTER) ---
+                    # CHARTING MIT PREZISEN ACHSEN FORMATIERUNGEN
                     if df_history is not None and not df_history.empty:
                         df_chart = df_history.reset_index().copy()
 
-                        # Exponential Moving Average (EMA) berechnen
+                        # Exponential Moving Average (EMA)
                         if len(df_chart) >= 5:
                             span_val = min(20, len(df_chart))
                             df_chart["EMA"] = df_chart["Kurs"].ewm(span=span_val, adjust=False).mean()
@@ -1317,7 +1335,16 @@ if current_data and len(current_data) > 0:
                         puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
 
-                        date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%m.%y" if zeitraum_wahl in ["6 Monate", "1 Jahr"] else "%d.%m.")
+                        # DYNAMISCHE X-ACHSEN-FORMATIERUNG
+                        if zeitraum_wahl == "24 Stunden":
+                            date_format = "%H:%M"
+                        elif zeitraum_wahl in ["7 Tage", "30 Tage"]:
+                            date_format = "%d.%m."
+                        else:  # 90 Tage, 6 Monate, 1 Jahr -> Monatsnamen anzeigen
+                            date_format = "%b %y"
+
+                        # DYNAMISCHE Y-ACHSEN-FORMATIERUNG
+                        y_format = ",.2f" if max_p < 10 else ",.0f"
 
                         base = alt.Chart(df_chart).encode(
                             x=alt.X(
@@ -1328,7 +1355,7 @@ if current_data and len(current_data) > 0:
                                     labelAngle=0,
                                     grid=True,
                                     gridDash=[2, 2],
-                                    gridColor="rgba(150, 150, 150, 0.15)",  # Für Dark- & Light-Mode
+                                    gridColor="rgba(150, 150, 150, 0.15)",
                                     tickCount=6,
                                 ),
                             ),
@@ -1336,7 +1363,11 @@ if current_data and len(current_data) > 0:
                                 "Kurs:Q",
                                 title="€",
                                 scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
-                                axis=alt.Axis(format=",.0f", grid=True, gridColor="rgba(150, 150, 150, 0.15)"),
+                                axis=alt.Axis(
+                                    format=y_format,
+                                    grid=True,
+                                    gridColor="rgba(150, 150, 150, 0.15)",
+                                ),
                             ),
                         ).properties(height=220)
 
@@ -1345,7 +1376,6 @@ if current_data and len(current_data) > 0:
                         
                         chart_layers = area + line
 
-                        # EMA Trend-Linie einblenden (Orange gestrichelt)
                         if "EMA" in df_chart.columns:
                             ema_line = base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(
                                 y=alt.Y("EMA:Q")
@@ -1359,7 +1389,6 @@ if current_data and len(current_data) > 0:
                             ]
                         )
 
-                        # .interactive() für Wischen und Zoomen auf Handys & Desktop
                         final_chart = (chart_layers + points).interactive()
                         st.altair_chart(final_chart, width="stretch")
 else:
@@ -1367,7 +1396,7 @@ else:
 
 st.write("---")
 
-# --- GLOBALER MARKT & MAKRO-ÜBERSICHT ---
+# GLOBALER MARKT & MAKRO-ÜBERSICHT
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1420,7 +1449,7 @@ with st.container(border=True):
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
             st.write(f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | **Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%)")
 
-# --- EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT ---
+# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT
 st.write("")
 with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
     st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage** im Vergleich zu Buy-and-Hold.")
@@ -1527,7 +1556,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# --- EXPANDER: HISTORISCHES MAKRO-ARCHIV ---
+# EXPANDER: HISTORISCHES MAKRO-ARCHIV
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
