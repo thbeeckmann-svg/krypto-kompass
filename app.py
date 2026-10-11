@@ -111,7 +111,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
     with col_e1:
         zeitraum_wahl = st.selectbox(
             "Rückblick-Zeitraum wählen:",
-            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage"],
+            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr"],
             index=1,
         )
         investment_wahl = st.selectbox(
@@ -148,8 +148,12 @@ elif zeitraum_wahl == "7 Tage":
     limit_anzahl, interval, wöchentlich = 7, "1d", False
 elif zeitraum_wahl == "30 Tage":
     limit_anzahl, interval, wöchentlich = 30, "1d", False
-else:
+elif zeitraum_wahl == "90 Tage":
     limit_anzahl, interval, wöchentlich = 90, "1d", True
+elif zeitraum_wahl == "6 Monate":
+    limit_anzahl, interval, wöchentlich = 180, "1d", True
+else:  # 1 Jahr
+    limit_anzahl, interval, wöchentlich = 365, "1d", True
 
 LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
@@ -756,37 +760,52 @@ def get_automatic_macro_score(
     return 1 if total > 20 else (-1 if total < -20 else 0)
 
 
-@st.cache_data(ttl=30)
-def get_historical_data(symbol, limit_days, interval, weekly=False):
+@st.cache_data(ttl=60)
+def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
+    
+    # 1. Binance API versuchen
     try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit_days}"
-        response = requests.get(url, timeout=3)
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit_anzahl}"
+        response = requests.get(url, timeout=4)
         if response.status_code == 200:
             raw_data = response.json()
-            dates = [datetime.fromtimestamp(entry[0] / 1000, tz=BERLIN_TZ) for entry in raw_data]
+            dates = [
+                pd.to_datetime(entry[0], unit='ms')
+                .tz_localize('UTC')
+                .tz_convert(BERLIN_TZ)
+                .tz_localize(None)
+                for entry in raw_data
+            ]
             prices = [float(entry[4]) for entry in raw_data]
             df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
             df.set_index("Timestamp", inplace=True)
             if weekly:
-                df = df.resample("W").mean()
+                df = df.resample("W").mean().dropna()
             return df.sort_index(ascending=True)
     except Exception:
         pass
 
+    # 2. Yahoo Finance Fallback
     try:
         yf_sym = symbol_yf_map.get(symbol, "BTC-EUR")
         t = yf.Ticker(yf_sym)
-        period = f"{max(limit_days + 10, 30)}d"
-        hist = t.history(period=period)
+        yf_interval = "1h" if interval == "1h" else "1d"
+        yf_period = "2d" if interval == "1h" else f"{limit_anzahl + 10}d"
+        hist = t.history(period=yf_period, interval=yf_interval)
         if not hist.empty:
-            hist = hist.tail(limit_days)
-            dates = [d.astimezone(BERLIN_TZ) if hasattr(d, "astimezone") else d for d in hist.index.to_pydatetime()]
+            hist = hist.tail(limit_anzahl)
+            dates = [
+                pd.to_datetime(d).tz_convert(BERLIN_TZ).tz_localize(None)
+                if hasattr(d, "tzinfo") and d.tzinfo is not None
+                else pd.to_datetime(d)
+                for d in hist.index
+            ]
             prices = hist["Close"].astype(float).values
             df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
             df.set_index("Timestamp", inplace=True)
             if weekly:
-                df = df.resample("W").mean()
+                df = df.resample("W").mean().dropna()
             return df.sort_index(ascending=True)
     except Exception:
         pass
@@ -949,8 +968,12 @@ def generate_signal(
         t_sf, t_mf, t_ms, t_ss = -13.0, -4.5, 5.5, 13.0
     elif zeitraum == "30 Tage":
         t_sf, t_mf, t_ms, t_ss = -22.0, -8.0, 9.0, 22.0
-    else:
+    elif zeitraum == "90 Tage":
         t_sf, t_mf, t_ms, t_ss = -32.0, -11.0, 13.0, 32.0
+    elif zeitraum == "6 Monate":
+        t_sf, t_mf, t_ms, t_ss = -45.0, -15.0, 18.0, 45.0
+    else:  # 1 Jahr
+        t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
 
     if perf_val <= t_sf and macro_score >= 0:
         return (
@@ -1150,7 +1173,7 @@ if current_data and len(current_data) > 0:
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
-        # EINZELNE KRYPTO-KARTEN MIT LOGOS, SYMBOLEN UND OPTIMIERTEM CHART
+        # EINZELNE KRYPTO-KARTEN MIT LOGOS, SYMBOLEN UND FEHLERFREIEM CHART
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1253,21 +1276,26 @@ if current_data and len(current_data) > 0:
                             unsafe_allow_html=True,
                         )
 
-                    # --- OPTIMIERTES CHART-RENDERING (DATETIME / FARBVERLAUF / MODERNE OPTIK) ---
+                    # --- SAUBERER KURSVERLAUF-CHART (FEHLERFREIER 24H/6M/1Y VERLAUF) ---
                     if df_history is not None and not df_history.empty:
                         min_p, max_p = df_history["Kurs"].min(), df_history["Kurs"].max()
-                        puffer = (max_p - min_p) * 0.1 or 50
+                        puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+                        
                         df_chart = df_history.reset_index()
+
+                        date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%m.%y" if zeitraum_wahl in ["6 Monate", "1 Jahr"] else "%d.%m.")
 
                         base = alt.Chart(df_chart).encode(
                             x=alt.X(
                                 "Timestamp:T",
                                 title=None,
                                 axis=alt.Axis(
-                                    format="%H:%M" if zeitraum_wahl == "24 Stunden" else "%d.%m.",
+                                    format=date_format,
                                     labelAngle=0,
-                                    grid=False,
+                                    grid=True,
+                                    gridDash=[2, 2],
+                                    gridColor="#f0f0f0",
                                     tickCount=6,
                                 ),
                             ),
@@ -1275,21 +1303,20 @@ if current_data and len(current_data) > 0:
                                 "Kurs:Q",
                                 title="€",
                                 scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
-                                axis=alt.Axis(format=",.0f"),
+                                axis=alt.Axis(format=",.0f", grid=True, gridColor="#f0f0f0"),
                             ),
-                        )
+                        ).properties(height=220)
 
-                        area = base.mark_area(opacity=0.15, color=chart_color)
-                        line = base.mark_line(color=chart_color, strokeWidth=2.5)
-                        points = base.mark_point(size=50, opacity=0).encode(
+                        area = base.mark_area(opacity=0.12, color=chart_color)
+                        line = base.mark_line(color=chart_color, strokeWidth=2)
+                        points = base.mark_point(size=40, color=chart_color, filled=True).encode(
                             tooltip=[
                                 alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
                                 alt.Tooltip("Kurs:Q", title="Kurs", format=",.2f €"),
                             ]
                         )
 
-                        chart_final = (area + line + points).properties(height=200)
-                        st.altair_chart(chart_final, width="stretch")
+                        st.altair_chart(area + line + points, width="stretch")
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
