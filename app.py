@@ -8,12 +8,15 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 
-# Seiten-Konfiguration
+# Seiten-Konfiguration (Seitenleiste wird auf Smartphones IMMER direkt ausgeklappt)
 st.set_page_config(
-    page_title="Krypto-Kompass", page_icon="🪙", layout="centered"
+    page_title="Krypto-Kompass",
+    page_icon="🪙",
+    layout="centered",
+    initial_sidebar_state="expanded",
 )
 
-# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Pfeil für Handy-Seitenleiste bleibt aktiv) ---
+# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Seitenleisten-Button bleibt mobil aktiv) ---
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -25,6 +28,12 @@ hide_streamlit_style = """
     .stAppViewerBadge {display: none !important;}
     div[class*="viewerBadge"] {display: none !important;}
     [data-testid="manage-app-button"] {display: none !important;}
+    
+    /* Zwingt den Pfeil / Button zum Öffnen der Seitenleiste auf Handys zur Sichtbarkeit */
+    [data-testid="stSidebarCollapseButton"] {
+        visibility: visible !important;
+        display: block !important;
+    }
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
@@ -39,7 +48,6 @@ def check_password():
         st.info("Bitte gib das Passwort ein, um auf den Krypto-Kompass zuzugreifen.")
         eingabe = st.text_input("Passwort:", type="password")
         if st.button("Anmelden", width="stretch"):
-            # Holt das Passwort aus Streamlit Secrets oder nutzt das Standardpasswort
             passwort_soll = st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123")
             if eingabe == passwort_soll:
                 st.session_state.authenticated = True
