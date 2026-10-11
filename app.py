@@ -89,7 +89,6 @@ def check_password():
 
 if not check_password():
     st.stop()
-# ------------------------------
 
 # KOPFBEREICH
 col_title, col_btn = st.columns([2, 1])
@@ -100,7 +99,6 @@ with col_btn:
         st.cache_data.clear()
         st.rerun()
 
-# Deutsche Zeit für Header (MEZ/MESZ)
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
@@ -127,7 +125,7 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. BATCH-ABRUF DER BINANCE-DATEN (SCHNELL & EINZELNER CALL)
+# 1. BATCH-ABRUF DER BINANCE-DATEN
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -209,7 +207,7 @@ def get_fear_and_greed():
     return 50, "Neutral"
 
 
-# 4. NEU: VOLATILITÄTSINDEX (VIX) & NASDAQ 100
+# 4. VOLATILITÄTSINDEX (VIX) & NASDAQ 100
 @st.cache_data(ttl=60)
 def get_vix_and_nasdaq():
     data = {"vix_val": 18.0, "vix_chg": 0.0, "nasdaq_val": 0.0, "nasdaq_chg": 0.0}
@@ -217,7 +215,7 @@ def get_vix_and_nasdaq():
         vix = yf.Ticker("^VIX")
         v_hist = vix.history(period="5d")
         if not v_hist.empty:
-            val = vix_hist = v_hist["Close"].iloc[-1]
+            val = v_hist["Close"].iloc[-1]
             prev = v_hist["Close"].iloc[0]
             data["vix_val"] = float(val)
             data["vix_chg"] = float(((val - prev) / prev) * 100) if prev > 0 else 0.0
@@ -234,7 +232,7 @@ def get_vix_and_nasdaq():
     return data
 
 
-# 5. NEU: CRYPTOCOMPARE ECHTZEIT-NACHRICHTEN & ZINS-SENTIMENT
+# 5. CRYPTOCOMPARE ECHTZEIT-NACHRICHTEN & ZINS-SENTIMENT
 @st.cache_data(ttl=300)
 def get_news_sentiment_score():
     url = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
@@ -277,28 +275,51 @@ def get_news_sentiment_score():
         return 0, []
 
 
-# 6. NEU: DEFILAMA STABLECOIN-LIQUIDITÄTS-INDEX (USDT + USDC)
+# 6. STABLECOIN LIQUIDITÄT & DEFI TVL (DEFILLAMA API)
 @st.cache_data(ttl=600)
-def get_stablecoin_marketcap_trend():
+def get_defillama_metrics():
+    res_data = {"stablecoin_mcap_b": 135.0, "global_tvl_b": 85.0}
     try:
+        # Stablecoin Supply
         url = "https://stablecoins.llama.fi/stablecoins?includePrices=true"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json().get("peggedAssets", [])
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            data = res.json().get("peggedAssets", [])
             usdt = next((item for item in data if item.get("symbol") == "USDT"), None)
             usdc = next((item for item in data if item.get("symbol") == "USDC"), None)
             
             usdt_mcap = usdt.get("circulating", {}).get("peggedUSD", 0) if usdt else 0
             usdc_mcap = usdc.get("circulating", {}).get("peggedUSD", 0) if usdc else 0
             
-            total_mcap_b = (usdt_mcap + usdc_mcap) / 1_000_000_000.0
-            return round(total_mcap_b, 2)
+            res_data["stablecoin_mcap_b"] = round((usdt_mcap + usdc_mcap) / 1_000_000_000.0, 2)
+
+        # Global DeFi TVL
+        tvl_url = "https://api.llama.fi/v2/chains"
+        tvl_res = requests.get(tvl_url, timeout=5)
+        if tvl_res.status_code == 200:
+            chains = tvl_res.json()
+            total_tvl = sum(c.get("tvl", 0) for c in chains if isinstance(c, dict))
+            res_data["global_tvl_b"] = round(total_tvl / 1_000_000_000.0, 2)
     except Exception:
         pass
-    return 135.0  # Fallback in Mrd. USD
+    return res_data
 
 
-# 7. Makro-Daten & Leitmärkte
+# 7. BITCOIN DOMINANZ (COINGECKO API)
+@st.cache_data(ttl=300)
+def get_btc_dominance():
+    try:
+        url = "https://api.coinglass.com/api/pro/v1/futures/bitcoin_etf/flow" # fallback safe
+        res = requests.get("https://api.coingecko.com/api/v3/global", timeout=4)
+        if res.status_code == 200:
+            dom = res.json().get("data", {}).get("market_cap_percentage", {}).get("btc", 56.5)
+            return round(dom, 1)
+    except Exception:
+        pass
+    return 56.5
+
+
+# 8. Makro-Daten & Leitmärkte
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -557,7 +578,7 @@ def generate_local_self_learning_optimizations(
         "Funding Rates & Derivate": 15.0,
         "RSI & Volatilität": 10.0,
         "Nachrichten & Zins-Sentiment": 10.0,
-        "Krypto-Liquidität (Stablecoins)": 5.0,
+        "Krypto-Liquidität & DeFi TVL": 5.0,
     }
 
     if df_archive is None or df_archive.empty or not current_data:
@@ -567,10 +588,7 @@ def generate_local_self_learning_optimizations(
         )
 
     total_predictions = len(df_archive)
-    buy_signals = 0
-    sell_signals = 0
-    failed_buys = 0
-    failed_sells = 0
+    buy_signals, sell_signals, failed_buys, failed_sells = 0, 0, 0, 0
 
     for idx, row in df_archive.iterrows():
         c_name = row.get("Coin", "")
@@ -610,7 +628,7 @@ def generate_local_self_learning_optimizations(
 
     if not optimizations:
         optimizations.append(
-            "✅ **System-Status Optimal:** 8-Faktoren-Gewichtungen aktiv."
+            "✅ **System-Status Optimal:** Multi-Faktoren-Gewichtungen aktiv."
         )
 
     report = (
@@ -627,7 +645,7 @@ Basierend auf **{total_predictions} ausgewerteten Zyklen** in `prediction_log.cs
 | **Funding Rates & Derivate** | 15,0 % | **{weights['Funding Rates & Derivate']:.1f} %** |
 | **RSI & Volatilität** | 10,0 % | **{weights['RSI & Volatilität']:.1f} %** |
 | **Nachrichten & Zins-Sentiment** | 10,0 % | **{weights['Nachrichten & Zins-Sentiment']:.1f} %** |
-| **Stablecoin-Liquidität** | 5,0 % | **{weights['Krypto-Liquidität (Stablecoins)']:.1f} %** |
+| **DeFi TVL & Liq.** | 5,0 % | **{weights['Krypto-Liquidität & DeFi TVL']:.1f} %** |
 
 ##### 💡 Autonome System-Erkenntnisse & Anpassungen:
 """
@@ -648,7 +666,8 @@ def calculate_detailed_factor_scores(
     etf_net_flow,
     vix_data,
     news_score,
-    stablecoin_mcap,
+    llama_data,
+    btc_dom,
     rsi_val=None,
     funding_rate=None,
     weights=None,
@@ -662,7 +681,7 @@ def calculate_detailed_factor_scores(
             "Funding Rates & Derivate": 15.0,
             "RSI & Volatilität": 10.0,
             "Nachrichten & Zins-Sentiment": 10.0,
-            "Krypto-Liquidität (Stablecoins)": 5.0,
+            "Krypto-Liquidität & DeFi TVL": 5.0,
         }
 
     # 1. Trend Score
@@ -725,14 +744,6 @@ def calculate_detailed_factor_scores(
     elif bond_change > 0.05:
         macro_points -= 30
 
-    if asian_markets:
-        n_chg = asian_markets.get("Nikkei_225", {}).get("change", 0.0)
-        h_chg = asian_markets.get("Hang_Seng", {}).get("change", 0.0)
-        if (n_chg + h_chg) / 2 > 0.8:
-            macro_points += 15
-        elif (n_chg + h_chg) / 2 < -0.8:
-            macro_points -= 15
-
     if stock_indices:
         sp500_chg = stock_indices.get("SP500", {}).get("chg", 0.0)
         dax_chg = stock_indices.get("DAX", {}).get("chg", 0.0)
@@ -745,9 +756,9 @@ def calculate_detailed_factor_scores(
     nasdaq_chg = vix_data.get("nasdaq_chg", 0.0)
 
     if vix_val > 28.0:
-        macro_points -= 30  # Panik am Aktienmarkt
+        macro_points -= 30
     elif vix_val < 15.0:
-        macro_points += 20  # Starkes Risk-on Klima
+        macro_points += 20
 
     if nasdaq_chg > 1.0:
         macro_points += 20
@@ -759,10 +770,11 @@ def calculate_detailed_factor_scores(
     # 7. Nachrichten & Zins-Sentiment Score
     news_sentiment_score = max(-100, min(100, news_score))
 
-    # 8. Krypto-Liquidität Score (Stablecoin Mcap)
-    if stablecoin_mcap >= 130.0:
-        liq_score = 60
-    elif stablecoin_mcap >= 100.0:
+    # 8. DeFi TVL & Krypto Liquidität Score
+    tvl = llama_data.get("global_tvl_b", 85.0)
+    if tvl >= 90.0:
+        liq_score = 70
+    elif tvl >= 70.0:
         liq_score = 30
     else:
         liq_score = -20
@@ -775,7 +787,7 @@ def calculate_detailed_factor_scores(
         f"Funding & Derivate ({weights['Funding Rates & Derivate']:.0f}%)": funding_score,
         f"RSI & Volatilität ({weights['RSI & Volatilität']:.0f}%)": rsi_score,
         f"News & Zins-Sentiment ({weights['Nachrichten & Zins-Sentiment']:.0f}%)": news_sentiment_score,
-        f"Stablecoin Liq. ({weights['Krypto-Liquidität (Stablecoins)']:.0f}%)": liq_score,
+        f"DeFi TVL & Liq. ({weights['Krypto-Liquidität & DeFi TVL']:.0f}%)": liq_score,
     }
 
 
@@ -790,7 +802,8 @@ def get_automatic_macro_score(
     etf_net_flow,
     vix_data,
     news_score,
-    stablecoin_mcap,
+    llama_data,
+    btc_dom,
     rsi_val=None,
     funding_rate=None,
     weights=None,
@@ -804,7 +817,7 @@ def get_automatic_macro_score(
             "Funding Rates & Derivate": 15.0,
             "RSI & Volatilität": 10.0,
             "Nachrichten & Zins-Sentiment": 10.0,
-            "Krypto-Liquidität (Stablecoins)": 5.0,
+            "Krypto-Liquidität & DeFi TVL": 5.0,
         }
 
     scores = calculate_detailed_factor_scores(
@@ -818,7 +831,8 @@ def get_automatic_macro_score(
         etf_net_flow,
         vix_data,
         news_score,
-        stablecoin_mcap,
+        llama_data,
+        btc_dom,
         rsi_val=rsi_val,
         funding_rate=funding_rate,
         weights=weights,
@@ -840,8 +854,8 @@ def get_automatic_macro_score(
             total += score_val * (weights["RSI & Volatilität"] / 100.0)
         elif "News & Zins" in key:
             total += score_val * (weights["Nachrichten & Zins-Sentiment"] / 100.0)
-        elif "Stablecoin Liq" in key:
-            total += score_val * (weights["Krypto-Liquidität (Stablecoins)"] / 100.0)
+        elif "DeFi TVL" in key:
+            total += score_val * (weights["Krypto-Liquidität & DeFi TVL"] / 100.0)
 
     return 1 if total > 20 else (-1 if total < -20 else 0)
 
@@ -912,7 +926,8 @@ def log_market_data(
     stock_indices,
     vix_data,
     news_score,
-    stablecoin_mcap,
+    llama_data,
+    btc_dom,
 ):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
@@ -950,10 +965,12 @@ def log_market_data(
         "VIX_Wert": round(vix_data.get("vix_val", 0.0), 2),
         "Nasdaq_Veränderung": round(vix_data.get("nasdaq_chg", 0.0), 2),
         "News_Sentiment_Score": news_score,
-        "Stablecoin_Mcap_MrdUSD": stablecoin_mcap,
+        "Stablecoin_Mcap_MrdUSD": llama_data.get("stablecoin_mcap_b", 0.0),
+        "DeFi_TVL_MrdUSD": llama_data.get("global_tvl_b", 0.0),
+        "BTC_Dominanz_Pct": btc_dom,
         "Datenquelle": (
             "Alternative.me, Yahoo Finance (^TNX, ^GSPC, ^GDAXI, ^N225, ^HSI, ^STOXX50E,"
-            " DX-Y.NYB, EURUSD=X, GC=F, CL=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama"
+            " DX-Y.NYB, EURUSD=X, GC=F, CL=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama, CoinGecko"
         ),
         "Quellen_Hinzugefügt_Am": "2026-10-12",
     }
@@ -1037,7 +1054,8 @@ def generate_signal(
     etf_net_flow,
     vix_data,
     news_score,
-    stablecoin_mcap,
+    llama_data,
+    btc_dom,
     zeitraum,
     weights,
     rsi_val=None,
@@ -1054,7 +1072,8 @@ def generate_signal(
         etf_net_flow,
         vix_data,
         news_score,
-        stablecoin_mcap,
+        llama_data,
+        btc_dom,
         rsi_val=rsi_val,
         funding_rate=funding_rate,
         weights=weights,
@@ -1099,7 +1118,7 @@ def generate_signal(
         )
 
 
-# LIVE-DATEN ABRUFEN & NEUE QUELLEN INTEGRATION
+# LIVE-DATEN ABRUFEN
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
 stock_indices = get_stock_indices()
@@ -1108,10 +1127,10 @@ eurozone_market = get_eurozone_market()
 fg_value, fg_text = get_fear_and_greed()
 real_etf_flow = get_real_spot_etf_flows()
 
-# Neue Datenquellen
 vix_data = get_vix_and_nasdaq()
 news_score, top_headlines = get_news_sentiment_score()
-stablecoin_mcap = get_stablecoin_marketcap_trend()
+llama_data = get_defillama_metrics()
+btc_dom = get_btc_dominance()
 
 current_data = get_current_data()
 
@@ -1167,7 +1186,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         w_fund = col_w1.slider("Funding Rate (%)", 0, 50, 15)
         w_rsi = col_w2.slider("RSI & Vola (%)", 0, 50, 10)
         w_news = col_w3.slider("News/Zinsen (%)", 0, 50, 10)
-        w_liq = col_w4.slider("Stablecoin Liq. (%)", 0, 50, 5)
+        w_liq = col_w4.slider("DeFi TVL & Liq (%)", 0, 50, 5)
 
         active_weights = {
             "Trend & Momentum": float(w_trend),
@@ -1177,7 +1196,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
             "Funding Rates & Derivate": float(w_fund),
             "RSI & Volatilität": float(w_rsi),
             "Nachrichten & Zins-Sentiment": float(w_news),
-            "Krypto-Liquidität (Stablecoins)": float(w_liq),
+            "Krypto-Liquidität & DeFi TVL": float(w_liq),
         }
     else:
         active_weights = dynamic_weights
@@ -1188,7 +1207,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 if auto_refresh_aktiv:
     st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
 
-# Konfiguration je nach Zeitraum
 if zeitraum_wahl == "24 Stunden":
     limit_anzahl, interval, wöchentlich = 24, "1h", False
 elif zeitraum_wahl == "7 Tage":
@@ -1226,10 +1244,10 @@ log_market_data(
     stock_indices,
     vix_data,
     news_score,
-    stablecoin_mcap,
+    llama_data,
+    btc_dom,
 )
 
-# BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
@@ -1267,7 +1285,8 @@ if current_data and len(current_data) > 0:
                 real_etf_flow,
                 vix_data,
                 news_score,
-                stablecoin_mcap,
+                llama_data,
+                btc_dom,
                 zeitraum_wahl,
                 active_weights,
                 rsi_val=rsi_value,
@@ -1321,7 +1340,6 @@ if current_data and len(current_data) > 0:
         cash_reserve_eur = max(0.0, round(geplantes_budget - total_invested_eur, 2))
         cash_reserve_pct = round((cash_reserve_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
 
-        # RENDER PORTFOLIO-TRANCHE IN DEN OBEREN EINSTELLUNGS-EXPANDER
         with portfolio_tranche_placeholder:
             st.markdown("💼 **Portfolio-Tranche Allokation:**")
             col_p1, col_p2, col_p3 = st.columns(3)
@@ -1361,7 +1379,6 @@ if current_data and len(current_data) > 0:
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
-        # EINZELNE KRYPTO-KARTEN
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1433,7 +1450,7 @@ if current_data and len(current_data) > 0:
                     st.caption(
                         f"🏛 **Spot-ETF Net Flow:** **{real_etf_flow:+.1f}M $**\n\n"
                         f"📊 **RSI (14):** **{rsi_value:.1f}** | ⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%**\n\n"
-                        f"📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 💵 **Stablecoin Supply:** **{stablecoin_mcap:.1f} Mrd. $**\n\n"
+                        f"📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 🔒 **DeFi TVL:** **{llama_data.get('global_tvl_b', 0):.1f} Mrd. $**\n\n"
                         f"🐋 **Wal-Aktivität:** {whale_msg}"
                     )
 
@@ -1456,7 +1473,8 @@ if current_data and len(current_data) > 0:
                         real_etf_flow,
                         vix_data,
                         news_score,
-                        stablecoin_mcap,
+                        llama_data,
+                        btc_dom,
                         rsi_val=rsi_value,
                         funding_rate=funding_rate_val,
                         weights=active_weights,
@@ -1479,7 +1497,7 @@ if current_data and len(current_data) > 0:
                             ),
                             tooltip=["Indikator", "Score"],
                         )
-                        .properties(height=240)
+                        .properties(height=250)
                     )
                     st.altair_chart(chart_scores, width="stretch")
 
@@ -1560,7 +1578,7 @@ else:
 
 st.write("---")
 
-# GLOBALER MARKT & MAKRO-ÜBERSICHT
+# GLOBALER MARKT & MAKRO-ÜBERSICHT (SAUBER FORMATED HTML FIX)
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1587,28 +1605,30 @@ with st.container(border=True):
         vix_c = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
         ndx_c = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
 
+        # KORRIGIERTE HTML-ZEILEN OHNE STERNE-KONFLIKTE
         st.markdown(
-            f'💵 **DXY:** **{ext_macro.get("dxy_val", 0):.2f}** (<span style="color:{dxy_c};">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) | '
-            f'💶 **EUR/USD:** **{ext_macro.get("eurusd_val", 0):.4f}** (<span style="color:{eur_c};">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
+            f'💵 <b>DXY:</b> <b>{ext_macro.get("dxy_val", 0):.2f}</b> (<span style="color:{dxy_c}; font-weight:bold;">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) | '
+            f'💶 <b>EUR/USD:</b> <b>{ext_macro.get("eurusd_val", 0):.4f}</b> (<span style="color:{eur_c}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
         st.markdown(
-            f'🥇 **Gold:** **{ext_macro.get("gold_val", 0):,.1f} $** (<span style="color:{gold_c};">{ext_macro.get("gold_chg", 0):+.2f}%</span>) | '
-            f'🛢 **Öl:** **{ext_macro.get("oil_val", 0):,.1f} $** (<span style="color:{oil_c};">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
+            f'🥇 <b>Gold:</b> <b>{ext_macro.get("gold_val", 0):,.1f} $</b> (<span style="color:{gold_c}; font-weight:bold;">{ext_macro.get("gold_chg", 0):+.2f}%</span>) | '
+            f'🛢 <b>Öl:</b> <b>{ext_macro.get("oil_val", 0):,.1f} $</b> (<span style="color:{oil_c}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
         st.markdown(
-            f'📉 **CBOE VIX (Panik):** **{vix_data.get("vix_val", 0):.1f}** (<span style="color:{vix_c};">{vix_data.get("vix_chg", 0):+.2f}%</span>) | '
-            f'💻 **Nasdaq 100:** <span style="color:{ndx_c};">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
+            f'📉 <b>CBOE VIX (Panik):</b> <b>{vix_data.get("vix_val", 0):.1f}</b> (<span style="color:{vix_c}; font-weight:bold;">{vix_data.get("vix_chg", 0):+.2f}%</span>) | '
+            f'💻 <b>Nasdaq 100:</b> <span style="color:{ndx_c}; font-weight:bold;">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
             unsafe_allow_html=True,
         )
 
         etf_color = "green" if real_etf_flow >= 0 else "red"
         st.markdown(
-            f'🏦 **Spot-ETF Nettofluss:** <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> | '
-            f'💧 **Stablecoin Liquidität:** **{stablecoin_mcap:.1f} Mrd. $**',
+            f'🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> | '
+            f'💧 <b>DeFi TVL:</b> <b>{llama_data.get("global_tvl_b", 0):.1f} Mrd. $</b> | '
+            f'🪙 <b>BTC Dominanz:</b> <b>{btc_dom:.1f}%</b>',
             unsafe_allow_html=True,
         )
 
