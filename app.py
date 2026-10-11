@@ -926,7 +926,7 @@ def log_market_data(
     fg_val,
     fg_txt,
     bond_val,
-    bond_chg,
+    bond_change,
     nikkei_val,
     nikkei_chg,
     hsi_val,
@@ -1625,43 +1625,41 @@ with st.container(border=True):
             bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
             st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
 
-        dxy_col = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
-        eur_col = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
-        jpy_col = "green" if ext_macro.get("usdjpy_chg", 0) >= 0 else "red"
-        gold_col = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
-        silver_col = "green" if ext_macro.get("silver_chg", 0) >= 0 else "red"
-        oil_col = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
-        copper_col = "green" if ext_macro.get("copper_chg", 0) >= 0 else "red"
-        vix_col = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
-        ndx_col = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
+        dxy_c = f":green[{ext_macro.get('dxy_chg', 0):+.2f}%]" if ext_macro.get("dxy_chg", 0) >= 0 else f":red[{ext_macro.get('dxy_chg', 0):+.2f}%]"
+        eur_c = f":green[{ext_macro.get('eurusd_chg', 0):+.2f}%]" if ext_macro.get("eurusd_chg", 0) >= 0 else f":red[{ext_macro.get('eurusd_chg', 0):+.2f}%]"
+        jpy_c = f":green[{ext_macro.get('usdjpy_chg', 0):+.2f}%]" if ext_macro.get("usdjpy_chg", 0) >= 0 else f":red[{ext_macro.get('usdjpy_chg', 0):+.2f}%]"
+
+        gold_c = f":green[{ext_macro.get('gold_chg', 0):+.2f}%]" if ext_macro.get("gold_chg", 0) >= 0 else f":red[{ext_macro.get('gold_chg', 0):+.2f}%]"
+        silver_c = f":green[{ext_macro.get('silver_chg', 0):+.2f}%]" if ext_macro.get("silver_chg", 0) >= 0 else f":red[{ext_macro.get('silver_chg', 0):+.2f}%]"
+        oil_c = f":green[{ext_macro.get('oil_chg', 0):+.2f}%]" if ext_macro.get("oil_chg", 0) >= 0 else f":red[{ext_macro.get('oil_chg', 0):+.2f}%]"
+        copper_c = f":green[{ext_macro.get('copper_chg', 0):+.2f}%]" if ext_macro.get("copper_chg", 0) >= 0 else f":red[{ext_macro.get('copper_chg', 0):+.2f}%]"
+
+        vix_c = f":red[{vix_data.get('vix_chg', 0):+.2f}%]" if vix_data.get("vix_chg", 0) >= 0 else f":green[{vix_data.get('vix_chg', 0):+.2f}%]"
+        ndx_c = f":green[{vix_data.get('nasdaq_chg', 0):+.2f}%]" if vix_data.get("nasdaq_chg", 0) >= 0 else f":red[{vix_data.get('nasdaq_chg', 0):+.2f}%]"
 
         st.markdown(
-            f'💵 <b>DXY:</b> {ext_macro.get("dxy_val", 0):.2f} (<span style="color:{dxy_col}; font-weight:bold;">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'💶 <b>EUR/USD:</b> {ext_macro.get("eurusd_val", 0):.4f} (<span style="color:{eur_col}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'💴 <b>USD/JPY:</b> {ext_macro.get("usdjpy_val", 0):.2f} (<span style="color:{jpy_col}; font-weight:bold;">{ext_macro.get("usdjpy_chg", 0):+.2f}%</span>)',
-            unsafe_allow_html=True,
+            f"💵 **DXY:** {ext_macro.get('dxy_val', 0):.2f} ({dxy_c}) | "
+            f"💶 **EUR/USD:** {ext_macro.get('eurusd_val', 0):.4f} ({eur_c}) | "
+            f"💴 **USD/JPY:** {ext_macro.get('usdjpy_val', 0):.2f} ({jpy_c})"
         )
 
         st.markdown(
-            f'🥇 <b>Gold:</b> {ext_macro.get("gold_val", 0):,.1f} $ (<span style="color:{gold_col}; font-weight:bold;">{ext_macro.get("gold_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'🥈 <b>Silber:</b> {ext_macro.get("silver_val", 0):,.2f} $ (<span style="color:{silver_col}; font-weight:bold;">{ext_macro.get("silver_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'🛢 <b>Öl:</b> {ext_macro.get("oil_val", 0):,.1f} $ (<span style="color:{oil_col}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'🏗 <b>Kupfer:</b> {ext_macro.get("copper_val", 0):,.2f} $ (<span style="color:{copper_col}; font-weight:bold;">{ext_macro.get("copper_chg", 0):+.2f}%</span>)',
-            unsafe_allow_html=True,
+            f"🥇 **Gold:** {ext_macro.get('gold_val', 0):,.1f} $ ({gold_c}) | "
+            f"🥈 **Silber:** {ext_macro.get('silver_val', 0):,.2f} $ ({silver_c}) | "
+            f"🛢 **Öl:** {ext_macro.get('oil_val', 0):,.1f} $ ({oil_c}) | "
+            f"🏗 **Kupfer:** {ext_macro.get('copper_val', 0):,.2f} $ ({copper_c})"
         )
 
         st.markdown(
-            f'📉 <b>CBOE VIX (Panik):</b> {vix_data.get("vix_val", 0):.1f} (<span style="color:{vix_col}; font-weight:bold;">{vix_data.get("vix_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'💻 <b>Nasdaq 100:</b> <span style="color:{ndx_col}; font-weight:bold;">{vix_data.get("nasdaq_chg", 0):+.2f}%</span>',
-            unsafe_allow_html=True,
+            f"📉 **CBOE VIX (Panik):** {vix_data.get('vix_val', 0):.1f} ({vix_c}) | "
+            f"💻 **Nasdaq 100:** {ndx_c}"
         )
 
-        etf_color = "green" if real_etf_flow >= 0 else "red"
+        etf_color = ":green" if real_etf_flow >= 0 else ":red"
         st.markdown(
-            f'🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> &nbsp;|&nbsp; '
-            f'💧 <b>DeFi TVL:</b> <b>{llama_data.get("global_tvl_b", 0):.1f} Mrd. $</b> &nbsp;|&nbsp; '
-            f'🪙 <b>BTC Dominanz:</b> <b>{btc_dom:.1f}%</b>',
-            unsafe_allow_html=True,
+            f"🏦 **Spot-ETF Nettofluss:** {etf_color}[{real_etf_flow:+.1f} Mio. USD] | "
+            f"💧 **DeFi TVL:** **{llama_data.get('global_tvl_b', 0):.1f} Mrd. $** | "
+            f"🪙 **BTC Dominanz:** **{btc_dom:.1f}%**"
         )
 
         if stock_indices:
@@ -1708,38 +1706,52 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
             df_archive.to_csv(LOG_FILE, index=False)
 
             if not df_archive.empty and current_data:
+                # 1. Datum parsen
+                df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
+                
+                # 2. Sortierung: Neueste Einträge für die Tabellendarstellung nach oben
+                df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
+
+                # Coin-Filter
+                all_coins = list(df_archive_sorted["Coin"].unique())
+                selected_filter = st.multiselect("🔍 Nach Coin filtern:", options=all_coins, default=all_coins)
+                df_filtered_view = df_archive_sorted[df_archive_sorted["Coin"].isin(selected_filter)]
+
                 comparison_rows, backtest_data = [], []
                 correct_hits, total_evaluated = 0, 0
                 sim_depot_signal, sim_depot_hold = 100.0, 100.0
 
-                for index, row in df_archive.iterrows():
+                for index, row in df_filtered_view.iterrows():
                     c_name = row["Coin"]
-                    kurs_damals = row["Kurs_Damals"]
-                    signal_damals = str(row["Signal"])
-                    datum = row["Datum"]
+                    kurs_damals = float(row.get("Kurs_Damals", 0))
+                    signal_damals = str(row.get("Signal", "")).upper()
+                    
+                    parsed_dt = row["ParsedDate"]
+                    datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
 
                     kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
                     diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
 
-                    if "KAUF" in signal_damals.upper():
+                    if "KAUF" in signal_damals:
                         sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
                     sim_depot_hold *= 1.0 + (diff_pct / 100.0)
 
                     backtest_data.append({
-                        "Datum": datum,
+                        "Datum": datum_formatted,
                         "App-Strategie": round(sim_depot_signal, 2),
                         "Buy & Hold": round(sim_depot_hold, 2),
                     })
 
+                    # Korrigierte Auswertungs-Logik (inkl. GEWINNE)
                     evaluation = "Neutral 🟡"
-                    if "KAUF" in signal_damals.upper():
+                    if "KAUF" in signal_damals:
                         total_evaluated += 1
                         if diff_pct > -1.5:
                             correct_hits += 1
                             evaluation = "Treffer 🟢"
                         else:
                             evaluation = "Fehlsignal 🔴"
-                    elif "VORSICHT" in signal_damals.upper():
+                    elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
                         total_evaluated += 1
                         if diff_pct < 1.5:
                             correct_hits += 1
@@ -1748,17 +1760,29 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                             evaluation = "Seitwärts 🟡"
 
                     comparison_rows.append({
-                        "Datum": datum,
+                        "Datum": datum_formatted,
                         "Coin": c_name,
                         "Signal": signal_damals,
                         "Kurs Damals": f"{kurs_damals:,.2f} €",
                         "Aktuell": f"{kurs_aktuell:,.2f} €",
-                        "Diff": f"{diff_pct:+.2f}%",
+                        "Diff (%)": round(diff_pct, 2),
                         "Auswertung": evaluation,
                     })
 
                 df_comp = pd.DataFrame(comparison_rows)
-                st.dataframe(df_comp, use_container_width=True, hide_index=True)
+
+                # Tabellen-Styling mit farbiger Diff-Spalte
+                st.dataframe(
+                    df_comp,
+                    column_config={
+                        "Diff (%)": st.column_config.NumberColumn(
+                            "Diff",
+                            format="%+.2f %%",
+                        ),
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
                 st.write("---")
                 st.markdown("##### 📈 Backtest-Vergleich")
@@ -1836,7 +1860,7 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
 
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
                 
-                # REIN 1: Sentiment & VIX
+                # ZEILE 1: Sentiment & VIX
                 col_mc1, col_mc2 = st.columns(2)
 
                 with col_mc1:
@@ -1880,7 +1904,7 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                     else:
                         st.info("Noch keine VIX-Historie vorhanden.")
 
-                # REIN 2: US 10J Zins & Gold
+                # ZEILE 2: US 10J Zins & Gold
                 col_mc3, col_mc4 = st.columns(2)
 
                 with col_mc3:
