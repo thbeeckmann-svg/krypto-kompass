@@ -13,14 +13,18 @@ st.set_page_config(
     page_title="Krypto-Kompass", page_icon="🪙", layout="centered"
 )
 
-# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Header, Menü, Footer, Manage App) ---
+# --- STREAMLIT-UI ELEMENTE AUSBLENDEN (Pfeil für Handy-Seitenleiste bleibt aktiv) ---
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stAppDeployButton {display: none;}
-    div[data-testid="stDecoration"] {display: none;}
+    header [data-testid="stToolbar"] {visibility: hidden;}
+    .stAppDeployButton {display: none !important;}
+    div[data-testid="stDecoration"] {display: none !important;}
+    div[data-testid="stViewerBadge"] {display: none !important;}
+    .stAppViewerBadge {display: none !important;}
+    div[class*="viewerBadge"] {display: none !important;}
+    [data-testid="manage-app-button"] {display: none !important;}
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
