@@ -143,13 +143,13 @@ if auto_refresh_aktiv:
 
 # Konfiguration je nach Zeitraum
 if zeitraum_wahl == "24 Stunden":
-    limit_anzahl, interval, wöchentlich, zeitformat = 24, "1h", False, "%H:%M"
+    limit_anzahl, interval, wöchentlich = 24, "1h", False
 elif zeitraum_wahl == "7 Tage":
-    limit_anzahl, interval, wöchentlich, zeitformat = 7, "1d", False, "%d.%m."
+    limit_anzahl, interval, wöchentlich = 7, "1d", False
 elif zeitraum_wahl == "30 Tage":
-    limit_anzahl, interval, wöchentlich, zeitformat = 30, "1d", False, "%d.%m."
+    limit_anzahl, interval, wöchentlich = 30, "1d", False
 else:
-    limit_anzahl, interval, wöchentlich, zeitformat = 90, "1d", True, "%d.%m."
+    limit_anzahl, interval, wöchentlich = 90, "1d", True
 
 LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
@@ -174,7 +174,7 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. Aktuelle Krypto-Daten abrufen (Binance API + yFinance Fallback)
+# 1. Aktuelle Krypto-Daten abrufen
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -764,7 +764,7 @@ def get_historical_data(symbol, limit_days, interval, weekly=False):
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
             raw_data = response.json()
-            dates = [datetime.fromtimestamp(entry[0] / 1000) for entry in raw_data]
+            dates = [datetime.fromtimestamp(entry[0] / 1000, tz=BERLIN_TZ) for entry in raw_data]
             prices = [float(entry[4]) for entry in raw_data]
             df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
             df.set_index("Timestamp", inplace=True)
@@ -781,7 +781,7 @@ def get_historical_data(symbol, limit_days, interval, weekly=False):
         hist = t.history(period=period)
         if not hist.empty:
             hist = hist.tail(limit_days)
-            dates = hist.index.to_pydatetime()
+            dates = [d.astimezone(BERLIN_TZ) if hasattr(d, "astimezone") else d for d in hist.index.to_pydatetime()]
             prices = hist["Close"].astype(float).values
             df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
             df.set_index("Timestamp", inplace=True)
@@ -1047,10 +1047,6 @@ if current_data and len(current_data) > 0:
                 hist_price = df_history.iloc[0]["Kurs"]
                 if hist_price > 0:
                     perf_val = ((price - hist_price) / hist_price) * 100
-                df_display = df_history.copy()
-                df_display.index = df_display.index.strftime(zeitformat)
-            else:
-                df_display = None
 
             signal, reason = generate_signal(
                 perf_val,
@@ -1081,7 +1077,6 @@ if current_data and len(current_data) > 0:
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
                 "df_history": df_history,
-                "df_display": df_display,
                 "perf_val": perf_val,
                 "hist_price": hist_price,
                 "signal": signal,
@@ -1155,7 +1150,7 @@ if current_data and len(current_data) > 0:
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
-        # EINZELNE KRYPTO-KARTEN MIT OFFIZIELLEN LOGOS UND WÄHRUNGSSYMBOLEN
+        # EINZELNE KRYPTO-KARTEN MIT LOGOS, SYMBOLEN UND OPTIMIERTEM CHART
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1167,7 +1162,7 @@ if current_data and len(current_data) > 0:
             take_profit = res["take_profit"]
             perf_val = res["perf_val"]
             hist_price = res["hist_price"]
-            df_display = res["df_display"]
+            df_history = res["df_history"]
             signal = res["signal"]
             reason = res["reason"]
             whale_msg = res["whale_msg"]
@@ -1175,7 +1170,6 @@ if current_data and len(current_data) > 0:
             investition_pct = res["investition_pct"]
 
             coin_menge = investition_eur / price if price > 0 else 0.0
-            
             logo_url = CRYPTO_LOGOS.get(coin, "")
             symbol = CRYPTO_SYMBOLS.get(coin, "")
 
@@ -1259,24 +1253,43 @@ if current_data and len(current_data) > 0:
                             unsafe_allow_html=True,
                         )
 
-                    if df_display is not None and not df_display.empty:
-                        min_p, max_p = df_display["Kurs"].min(), df_display["Kurs"].max()
+                    # --- OPTIMIERTES CHART-RENDERING (DATETIME / FARBVERLAUF / MODERNE OPTIK) ---
+                    if df_history is not None and not df_history.empty:
+                        min_p, max_p = df_history["Kurs"].min(), df_history["Kurs"].max()
                         puffer = (max_p - min_p) * 0.1 or 50
-                        chart = (
-                            alt.Chart(df_display.reset_index())
-                            .mark_line(
-                                point=dict(filled=True, size=50),
-                                color="#2980b9",
-                                strokeWidth=2.5,
-                            )
-                            .encode(
-                                x=alt.X("Timestamp:N", title=None, sort=None, axis=alt.Axis(labelAngle=0)),
-                                y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False)),
-                                tooltip=[alt.Tooltip("Timestamp:N"), alt.Tooltip("Kurs:Q", format=",.2f")],
-                            )
-                            .properties(height=220)
+                        chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+                        df_chart = df_history.reset_index()
+
+                        base = alt.Chart(df_chart).encode(
+                            x=alt.X(
+                                "Timestamp:T",
+                                title=None,
+                                axis=alt.Axis(
+                                    format="%H:%M" if zeitraum_wahl == "24 Stunden" else "%d.%m.",
+                                    labelAngle=0,
+                                    grid=False,
+                                    tickCount=6,
+                                ),
+                            ),
+                            y=alt.Y(
+                                "Kurs:Q",
+                                title="€",
+                                scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
+                                axis=alt.Axis(format=",.0f"),
+                            ),
                         )
-                        st.altair_chart(chart, width="stretch")
+
+                        area = base.mark_area(opacity=0.15, color=chart_color)
+                        line = base.mark_line(color=chart_color, strokeWidth=2.5)
+                        points = base.mark_point(size=50, opacity=0).encode(
+                            tooltip=[
+                                alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
+                                alt.Tooltip("Kurs:Q", title="Kurs", format=",.2f €"),
+                            ]
+                        )
+
+                        chart_final = (area + line + points).properties(height=200)
+                        st.altair_chart(chart_final, width="stretch")
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
@@ -1359,7 +1372,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     kurs_damals = row["Kurs_Damals"]
                     signal_damals = str(row["Signal"])
                     datum = row["Datum"]
-                    q_quelle = row.get("Datenquelle", "Binance Spot REST API")
 
                     kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
                     diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
