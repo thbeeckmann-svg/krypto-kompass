@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+from zoneinfo import ZoneInfo
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -7,6 +8,9 @@ import requests
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
+
+# Zeitzone für Deutschland (MEZ / MESZ)
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
 # Seiten-Konfiguration
 st.set_page_config(
@@ -79,10 +83,11 @@ with col_btn:
         st.cache_data.clear()
         st.rerun()
 
-aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+# Deutsche Zeit für Header (MEZ/MESZ)
+aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (INKL. PORTFOLIO-TRANCHE) ---
+# --- EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ) ---
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     
@@ -113,7 +118,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         )
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
-    # Platzhalter für die Portfolio-Tranche direkt im oberen Expander
     st.write("---")
     portfolio_tranche_placeholder = st.container()
 
@@ -130,7 +134,6 @@ elif zeitraum_wahl == "30 Tage":
 else:
     limit_anzahl, interval, wöchentlich, zeitformat = 90, "1d", True, "%d.%m."
 
-# Logging-Dateien
 LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
@@ -142,7 +145,7 @@ def clean_old_logs(file_path, days_limit=365):
             df = pd.read_csv(file_path)
             if "Datum" in df.columns:
                 df["ParsedDate"] = pd.to_datetime(df["Datum"], errors="coerce")
-                cutoff_date = datetime.now() - timedelta(days=days_limit)
+                cutoff_date = datetime.now(BERLIN_TZ).replace(tzinfo=None) - timedelta(days=days_limit)
                 df_filtered = df[df["ParsedDate"] >= cutoff_date]
                 df_filtered = df_filtered.drop(columns=["ParsedDate"], errors="ignore")
                 df_filtered.to_csv(file_path, index=False)
@@ -154,7 +157,7 @@ clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
 
-# 1. Aktuelle Krypto-Daten abrufen (Inkl. Cloud-Fallback)
+# 1. Aktuelle Krypto-Daten abrufen (Binance API + yFinance Fallback)
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -197,7 +200,7 @@ def get_current_data():
     return data if data else None
 
 
-# 2. ECHTE SPOT-ETF NET FLOWS ABRUFEN
+# 2. Spot-ETF Net Flows abrufen
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     try:
@@ -218,7 +221,7 @@ def get_real_spot_etf_flows():
     return 145.20
 
 
-# 3. Crypto Fear & Greed Index abrufen
+# 3. Fear & Greed Index abrufen
 @st.cache_data(ttl=60)
 def get_fear_and_greed():
     try:
@@ -233,7 +236,7 @@ def get_fear_and_greed():
     return 50, "Neutral"
 
 
-# 4. Globales Makro-, Devisen- & Rohstoff-Umfeld live abrufen
+# 4. Makro-Daten & Leitmärkte
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -370,7 +373,6 @@ def analyze_whale_activity(volume, change_24h):
         return ("🟡 Unauffällige On-Chain-Aktivität", 0)
 
 
-# ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT
 @st.cache_data(ttl=30)
 def calculate_atr(symbol, limit=30):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -422,7 +424,6 @@ def calculate_atr(symbol, limit=30):
     return 0.0
 
 
-# ECHTER RSI(14) RECHNER
 @st.cache_data(ttl=30)
 def get_real_rsi(symbol, limit=30):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -466,7 +467,6 @@ def get_real_rsi(symbol, limit=30):
     return 50.0
 
 
-# ECHTE BINANCE FUTURES FUNDING RATE ABRUFEN
 @st.cache_data(ttl=60)
 def get_real_funding_rate(coin_name="Bitcoin"):
     futures_map = {
@@ -488,7 +488,6 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     return 0.0001
 
 
-# AUTONOMES LOKALES QUANT-SELBSTLERNMODUL
 def generate_local_self_learning_optimizations(
     df_archive, df_market, current_data
 ):
@@ -792,8 +791,8 @@ def log_market_data(
     ext_macro,
     stock_indices,
 ):
-    today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    date_only = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
 
     sp500_v = round(stock_indices.get("SP500", {}).get("val", 0.0), 2) if stock_indices else 0.0
     sp500_c = round(stock_indices.get("SP500", {}).get("chg", 0.0), 2) if stock_indices else 0.0
@@ -854,8 +853,8 @@ def log_market_data(
 
 
 def log_prediction(coin, price, signal_text, fg_val):
-    today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    date_only = datetime.now().strftime("%Y-%m-%d")
+    today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
 
     if os.path.exists(LOG_FILE):
         try:
@@ -900,68 +899,36 @@ def log_prediction(coin, price, signal_text, fg_val):
         df_log.to_csv(LOG_FILE, index=False)
 
 
-# Live-Daten abrufen
-bond_val, bond_change = get_macro_bond_yield()
-ext_macro = get_extended_macro_data()
-stock_indices = get_stock_indices()
-asian_markets = get_asian_markets()
-eurozone_market = get_eurozone_market()
-fg_value, fg_text = get_fear_and_greed()
-real_etf_flow = get_real_spot_etf_flows()
+def register_improvement(title, description, change_date=None):
+    if not change_date:
+        change_date = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y")
 
-nikkei_val = (
-    asian_markets.get("Nikkei_225", {}).get("value")
-    if asian_markets
-    else None
-)
-nikkei_chg = (
-    asian_markets.get("Nikkei_225", {}).get("change")
-    if asian_markets
-    else 0.0
-)
-hsi_val = (
-    asian_markets.get("Hang_Seng", {}).get("value") if asian_markets else None
-)
-hsi_chg = (
-    asian_markets.get("Hang_Seng", {}).get("change") if asian_markets else 0.0
-)
+    if not os.path.exists(IMP_FILE):
+        df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
+    else:
+        try:
+            df_imp = pd.read_csv(IMP_FILE)
+            if "Datum" in df_imp.columns and "Änderungsdatum" not in df_imp.columns:
+                df_imp = df_imp.rename(columns={"Datum": "Änderungsdatum"})
+        except Exception:
+            df_imp = pd.DataFrame(columns=["Änderungsdatum", "Titel", "Beschreibung"])
 
-eu_val = eurozone_market.get("value") if eurozone_market else None
-eu_chg = eurozone_market.get("change") if eurozone_market else 0.0
+    if not df_imp.empty and "Titel" in df_imp.columns:
+        df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
 
-log_market_data(
-    fg_value,
-    fg_text,
-    bond_val,
-    bond_change,
-    nikkei_val,
-    nikkei_chg,
-    hsi_val,
-    hsi_chg,
-    eu_val,
-    eu_chg,
-    real_etf_flow,
-    ext_macro,
-    stock_indices,
-)
+    if not df_imp.empty and (df_imp["Titel"] == title).any():
+        df_imp.loc[df_imp["Titel"] == title, "Beschreibung"] = description
+        df_imp.loc[df_imp["Titel"] == title, "Änderungsdatum"] = change_date
+    else:
+        new_row = pd.DataFrame([{
+            "Änderungsdatum": change_date,
+            "Titel": title,
+            "Beschreibung": description,
+        }])
+        df_imp = pd.concat([new_row, df_imp], ignore_index=True)
 
-current_data = get_current_data()
-
-# DYNAMISCHES LERN-MODUL AUSFÜHREN
-df_archive_check = (
-    pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
-)
-df_market_check = (
-    pd.read_csv(MARKET_LOG_FILE)
-    if os.path.exists(MARKET_LOG_FILE)
-    else pd.DataFrame()
-)
-
-local_learning_report, dynamic_weights = (
-    generate_local_self_learning_optimizations(
-        df_archive_check, df_market_check, current_data
-    )
-)
+    df_imp = df_imp.drop_duplicates(subset=["Titel"], keep="last")
+    df_imp.to_csv(IMP_FILE, index=False)
 
 
 def generate_signal(
@@ -1027,6 +994,48 @@ def generate_signal(
         )
 
 
+# --- LIVE-DATEN ABRUFEN & LOGGEN ---
+bond_val, bond_change = get_macro_bond_yield()
+ext_macro = get_extended_macro_data()
+stock_indices = get_stock_indices()
+asian_markets = get_asian_markets()
+eurozone_market = get_eurozone_market()
+fg_value, fg_text = get_fear_and_greed()
+real_etf_flow = get_real_spot_etf_flows()
+
+nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
+nikkei_chg = asian_markets.get("Nikkei_225", {}).get("change") if asian_markets else 0.0
+hsi_val = asian_markets.get("Hang_Seng", {}).get("value") if asian_markets else None
+hsi_chg = asian_markets.get("Hang_Seng", {}).get("change") if asian_markets else 0.0
+
+eu_val = eurozone_market.get("value") if eurozone_market else None
+eu_chg = eurozone_market.get("change") if eurozone_market else 0.0
+
+log_market_data(
+    fg_value,
+    fg_text,
+    bond_val,
+    bond_change,
+    nikkei_val,
+    nikkei_chg,
+    hsi_val,
+    hsi_chg,
+    eu_val,
+    eu_chg,
+    real_etf_flow,
+    ext_macro,
+    stock_indices,
+)
+
+current_data = get_current_data()
+
+df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
+df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
+
+local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(
+    df_archive_check, df_market_check, current_data
+)
+
 # --- BERECHNUNG DER ALLOKATION UND BEFÜLLUNG DES OBEREN EXPANDERS ---
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
@@ -1044,18 +1053,10 @@ if current_data and len(current_data) > 0:
             rsi_value = get_real_rsi(symbol, limit=30)
             funding_rate_val = get_real_funding_rate(coin)
 
-            stop_loss = (
-                max(0.0, price - (2.0 * atr_value))
-                if atr_value > 0
-                else price * 0.95
-            )
-            take_profit = (
-                price + (3.0 * atr_value) if atr_value > 0 else price * 1.08
-            )
+            stop_loss = max(0.0, price - (2.0 * atr_value)) if atr_value > 0 else price * 0.95
+            take_profit = price + (3.0 * atr_value) if atr_value > 0 else price * 1.08
 
-            df_history = get_historical_data(
-                symbol, limit_anzahl, interval, weekly=wöchentlich
-            )
+            df_history = get_historical_data(symbol, limit_anzahl, interval, weekly=wöchentlich)
             perf_val, hist_price = 0.0, 0.0
             if df_history is not None and not df_history.empty:
                 hist_price = df_history.iloc[0]["Kurs"]
