@@ -1625,41 +1625,38 @@ with st.container(border=True):
             bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
             st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
 
-        dxy_c = f":green[{ext_macro.get('dxy_chg', 0):+.2f}%]" if ext_macro.get("dxy_chg", 0) >= 0 else f":red[{ext_macro.get('dxy_chg', 0):+.2f}%]"
-        eur_c = f":green[{ext_macro.get('eurusd_chg', 0):+.2f}%]" if ext_macro.get("eurusd_chg", 0) >= 0 else f":red[{ext_macro.get('eurusd_chg', 0):+.2f}%]"
-        jpy_c = f":green[{ext_macro.get('usdjpy_chg', 0):+.2f}%]" if ext_macro.get("usdjpy_chg", 0) >= 0 else f":red[{ext_macro.get('usdjpy_chg', 0):+.2f}%]"
+        # Farbcodes für reines HTML (Grün / Rot)
+        dxy_color = "#2ecc71" if ext_macro.get("dxy_chg", 0) >= 0 else "#e74c3c"
+        eur_color = "#2ecc71" if ext_macro.get("eurusd_chg", 0) >= 0 else "#e74c3c"
+        jpy_color = "#2ecc71" if ext_macro.get("usdjpy_chg", 0) >= 0 else "#e74c3c"
 
-        gold_c = f":green[{ext_macro.get('gold_chg', 0):+.2f}%]" if ext_macro.get("gold_chg", 0) >= 0 else f":red[{ext_macro.get('gold_chg', 0):+.2f}%]"
-        silver_c = f":green[{ext_macro.get('silver_chg', 0):+.2f}%]" if ext_macro.get("silver_chg", 0) >= 0 else f":red[{ext_macro.get('silver_chg', 0):+.2f}%]"
-        oil_c = f":green[{ext_macro.get('oil_chg', 0):+.2f}%]" if ext_macro.get("oil_chg", 0) >= 0 else f":red[{ext_macro.get('oil_chg', 0):+.2f}%]"
-        copper_c = f":green[{ext_macro.get('copper_chg', 0):+.2f}%]" if ext_macro.get("copper_chg", 0) >= 0 else f":red[{ext_macro.get('copper_chg', 0):+.2f}%]"
+        gold_color = "#2ecc71" if ext_macro.get("gold_chg", 0) >= 0 else "#e74c3c"
+        silver_color = "#2ecc71" if ext_macro.get("silver_chg", 0) >= 0 else "#e74c3c"
+        oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
+        copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
 
-        vix_c = f":red[{vix_data.get('vix_chg', 0):+.2f}%]" if vix_data.get("vix_chg", 0) >= 0 else f":green[{vix_data.get('vix_chg', 0):+.2f}%]"
-        ndx_c = f":green[{vix_data.get('nasdaq_chg', 0):+.2f}%]" if vix_data.get("nasdaq_chg", 0) >= 0 else f":red[{vix_data.get('nasdaq_chg', 0):+.2f}%]"
-
-        st.markdown(
-            f"💵 **DXY:** {ext_macro.get('dxy_val', 0):.2f} ({dxy_c}) | "
-            f"💶 **EUR/USD:** {ext_macro.get('eurusd_val', 0):.4f} ({eur_c}) | "
-            f"💴 **USD/JPY:** {ext_macro.get('usdjpy_val', 0):.2f} ({jpy_c})"
-        )
+        vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
+        etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(
-            f"🥇 **Gold:** {ext_macro.get('gold_val', 0):,.1f} $ ({gold_c}) | "
-            f"🥈 **Silber:** {ext_macro.get('silver_val', 0):,.2f} $ ({silver_c}) | "
-            f"🛢 **Öl:** {ext_macro.get('oil_val', 0):,.1f} $ ({oil_c}) | "
-            f"🏗 **Kupfer:** {ext_macro.get('copper_val', 0):,.2f} $ ({copper_c})"
-        )
-
-        st.markdown(
-            f"📉 **CBOE VIX (Panik):** {vix_data.get('vix_val', 0):.1f} ({vix_c}) | "
-            f"💻 **Nasdaq 100:** {ndx_c}"
-        )
-
-        etf_color = ":green" if real_etf_flow >= 0 else ":red"
-        st.markdown(
-            f"🏦 **Spot-ETF Nettofluss:** {etf_color}[{real_etf_flow:+.1f} Mio. USD] | "
-            f"💧 **DeFi TVL:** **{llama_data.get('global_tvl_b', 0):.1f} Mrd. $** | "
-            f"🪙 **BTC Dominanz:** **{btc_dom:.1f}%**"
+            f"""
+            <div style="line-height: 1.8; font-size: 0.95rem;">
+                💵 <b>DXY:</b> {ext_macro.get('dxy_val', 0):.2f} (<span style="color:{dxy_color}; font-weight:bold;">{ext_macro.get('dxy_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💶 <b>EUR/USD:</b> {ext_macro.get('eurusd_val', 0):.4f} (<span style="color:{eur_color}; font-weight:bold;">{ext_macro.get('eurusd_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💴 <b>USD/JPY:</b> {ext_macro.get('usdjpy_val', 0):.2f} (<span style="color:{jpy_color}; font-weight:bold;">{ext_macro.get('usdjpy_chg', 0):+.2f}%</span>)<br>
+                🥇 <b>Gold:</b> {ext_macro.get('gold_val', 0):,.1f} $ (<span style="color:{gold_color}; font-weight:bold;">{ext_macro.get('gold_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🥈 <b>Silber:</b> {ext_macro.get('silver_val', 0):,.2f} $ (<span style="color:{silver_color}; font-weight:bold;">{ext_macro.get('silver_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🛢 <b>Öl:</b> {ext_macro.get('oil_val', 0):,.1f} $ (<span style="color:{oil_color}; font-weight:bold;">{ext_macro.get('oil_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🏗 <b>Kupfer:</b> {ext_macro.get('copper_val', 0):,.2f} $ (<span style="color:{copper_color}; font-weight:bold;">{ext_macro.get('copper_chg', 0):+.2f}%</span>)<br>
+                📉 <b>CBOE VIX (Panik):</b> {vix_data.get('vix_val', 0):.1f} (<span style="color:{vix_color}; font-weight:bold;">{vix_data.get('vix_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💻 <b>Nasdaq 100:</b> <span style="color:{ndx_color}; font-weight:bold;">{vix_data.get('nasdaq_chg', 0):+.2f}%</span><br>
+                🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> &nbsp;|&nbsp; 
+                💧 <b>DeFi TVL:</b> <b>{llama_data.get('global_tvl_b', 0):.1f} Mrd. $</b> &nbsp;|&nbsp; 
+                🪙 <b>BTC Dominanz:</b> <b>{btc_dom:.1f}%</b>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
         if stock_indices:
