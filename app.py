@@ -15,7 +15,7 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- STREAMLIT-UI ELEMENTE COMPLETE CLEAN UP (Für Mobilgeräte optimiert) ---
+# --- HANDY-OPTIMIERTES CSS ---
 hide_streamlit_style = """
     <style>
     /* Oberste Leiste, Admin-Menü und Footer unsichtbar machen */
@@ -29,10 +29,19 @@ hide_streamlit_style = """
     div[class*="viewerBadge"] { display: none !important; }
     [data-testid="manage-app-button"] { display: none !important; }
     
-    /* Mobilfreundliche Abstände */
+    /* Mobilfreundliche Abstände & Schriftgrößen */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 1rem !important;
         padding-bottom: 2rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.3rem !important;
+    }
+    div[data-testid="stExpander"] {
+        border-radius: 8px !important;
+        margin-bottom: 0.5rem !important;
     }
     </style>
 """
@@ -61,25 +70,20 @@ if not check_password():
     st.stop()
 # ------------------------------
 
-# TITEL UND KOPFBEREICH
-col_title, col_btn = st.columns([2.5, 1.5])
+# KOPFBEREICH
+col_title, col_btn = st.columns([2, 1])
 with col_title:
-    st.markdown("# 🪙 Krypto-Kompass")
-    st.markdown("### *Live-ETF Flows & Signal-Formel*")
+    st.markdown("### 🪙 Krypto-Kompass")
 with col_btn:
-    st.write("")
-    if st.button("🔄 Aktualisieren", width="stretch"):
+    if st.button("🔄 Refresh", width="stretch"):
         st.cache_data.clear()
         st.rerun()
-    aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    st.markdown(
-        f'<p style="font-size: 11px; color: gray; text-align: center;'
-        f' margin-top: 2px;">Letztes Update:<br>{aktuelle_zeit}</p>',
-        unsafe_allow_html=True,
-    )
 
-# --- OBERES EINSTELLUNGS-MENÜ (OPTIMIERT FÜR SMARTPHONES) ---
-with st.expander("⚙️ **Einstellungen & Investitions-Planung (Hier anpassen)**", expanded=True):
+aktuelle_zeit = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+st.caption(f"Letztes Update: {aktuelle_zeit}")
+
+# --- OBERES EINSTELLUNGS-MENÜ (AUFKLAPPBAR FÜR MOBILGERÄTE) ---
+with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     
     with col_e1:
@@ -122,8 +126,6 @@ elif zeitraum_wahl == "30 Tage":
 else:
     limit_anzahl, interval, wöchentlich, zeitformat = 90, "1d", True, "%d.%m."
 
-st.write("---")
-
 # Logging-Dateien
 LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
@@ -155,7 +157,6 @@ def get_current_data():
     yf_map = {"Bitcoin": "BTC-EUR", "Ethereum": "ETH-EUR", "Solana": "SOL-EUR", "Cardano": "ADA-EUR", "Bitcoin Cash": "BCH-EUR"}
     data = {}
     
-    # 1. Versuch: Binance REST API
     try:
         for name, symbol in coins.items():
             url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
@@ -170,7 +171,6 @@ def get_current_data():
     except Exception:
         pass
 
-    # 2. Fallback: Yahoo Finance
     if len(data) < len(coins):
         try:
             for name, yf_sym in yf_map.items():
@@ -359,14 +359,11 @@ def get_eurozone_market():
 
 def analyze_whale_activity(volume, change_24h):
     if volume > 2000000000 and change_24h < -1.5:
-        return (
-            "🔴 Whale-Warnung: Hohe Börsenzuflüsse (Erhöhter Abverkaufsdruck)",
-            -1,
-        )
+        return ("🔴 Whale-Warnung: Hohe Börsenzuflüsse", -1)
     elif volume > 2000000000 and change_24h > 1.5:
-        return ("🟢 Whale-Akkumulation: Starke Mittelabflüsse / OTC-Käufe", 1)
+        return ("🟢 Whale-Akkumulation: OTC-Käufe", 1)
     else:
-        return ("🟡 Unauffällige On-Chain-Aktivität (Normaler Marktfluss)", 0)
+        return ("🟡 Unauffällige On-Chain-Aktivität", 0)
 
 
 # ATR-BERECHNUNG FÜR RISIKO-MANAGEMENT
@@ -931,26 +928,6 @@ def register_improvement(title, description, change_date=None):
     df_imp.to_csv(IMP_FILE, index=False)
 
 
-# ==========================================
-# SYSTEM-VERBESSERUNGEN LOGGEN
-# ==========================================
-
-register_improvement(
-    "Dynamische Portfolio-Kapitalallokation (Multi-Asset Sizing)",
-    "Automatische Aufteilung des Gesamt-Tranchenbudgets auf ausgewählte Coins nach Signalstärke. Verhindert Über-Allokation bei mehreren Kaufsignalen.",
-    "11.10.2026",
-)
-register_improvement(
-    "Echte Indikatoren: RSI (14) & Binance Funding Rates",
-    "Direkte Integration von echtem RSI(14) aus Binance-Klines und echten Futures Funding Rates in den Composite Signal-Score.",
-    "11.10.2026",
-)
-register_improvement(
-    "Erweiterung um Cardano & Bitcoin Cash",
-    "Integration von Cardano (ADAEUR) und Bitcoin Cash (BCHEUR) in die Coin-Auswahl und Binance-Live-Abfragen.",
-    "11.10.2026",
-)
-
 # Live-Daten abrufen
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
@@ -1078,7 +1055,7 @@ def generate_signal(
         )
 
 
-# 1. OBEN: Krypto-Anzeige & Multi-Asset Portfolio Allokator
+# --- 1. HAUPTBEREICH: MULTI-ASSET PORTFOLIO ALLOKATION ---
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
@@ -1180,16 +1157,13 @@ if current_data and len(current_data) > 0:
         cash_reserve_eur = max(0.0, round(geplantes_budget - total_invested_eur, 2))
         cash_reserve_pct = round((cash_reserve_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
 
+        # KOMPAKTE HANDY-ÜBERSICHT FÜR DAS PORTFOLIO
         with st.container(border=True):
-            st.markdown("### 💼 Multi-Asset Portfolio-Allokation")
-            st.markdown(
-                f"Das Gesamtbudget deiner Tranche (**{geplantes_budget:,.2f} €**) wird dynamisch"
-                " nach Signalstärke auf die ausgewählten Assets verteilt."
-            )
+            st.markdown("💼 **Portfolio-Tranche:**")
             col_p1, col_p2, col_p3 = st.columns(3)
-            col_p1.metric("Geplantes Gesamtbudget", f"{geplantes_budget:,.2f} €")
-            col_p2.metric("Krypto-Investition Total", f"{total_invested_eur:,.2f} €", f"{100.0 - cash_reserve_pct:.1f}% Allokation")
-            col_p3.metric("Cash-Reserve (Schutz)", f"{cash_reserve_eur:,.2f} €", f"{cash_reserve_pct:.1f}% Cash")
+            col_p1.metric("Gesamt", f"{geplantes_budget:,.0f} €")
+            col_p2.metric("Krypto", f"{total_invested_eur:,.0f} €", f"{100.0 - cash_reserve_pct:.0f}%")
+            col_p3.metric("Cash", f"{cash_reserve_eur:,.0f} €", f"{cash_reserve_pct:.0f}%")
 
             alloc_chart_data = []
             for coin, res in coin_results.items():
@@ -1201,7 +1175,7 @@ if current_data and len(current_data) > 0:
                     })
             if cash_reserve_eur > 0:
                 alloc_chart_data.append({
-                    "Asset": "💵 Cash-Reserve",
+                    "Asset": "💵 Cash",
                     "Betrag (€)": cash_reserve_eur,
                     "Anteil (%)": cash_reserve_pct,
                 })
@@ -1212,17 +1186,18 @@ if current_data and len(current_data) > 0:
                     alt.Chart(df_alloc_chart)
                     .mark_bar(cornerRadiusEnd=4)
                     .encode(
-                        x=alt.X("Betrag (€):Q", title="Allokation in €"),
+                        x=alt.X("Betrag (€):Q", title=None),
                         y=alt.Y("Asset:N", sort=None, title=None),
                         color=alt.Color("Asset:N", scale=alt.Scale(scheme="category10"), legend=None),
                         tooltip=["Asset", "Betrag (€)", "Anteil (%)"],
                     )
-                    .properties(height=max(140, len(alloc_chart_data) * 40))
+                    .properties(height=max(120, len(alloc_chart_data) * 35))
                 )
                 st.altair_chart(chart_alloc, width="stretch")
 
-        st.write("---")
+        st.markdown("### 🪙 Einzelne Kryptowährungen")
 
+        # EINZELNE KRYPTO-KARTEN MIT AUFKLAPPBAREM DETAILS-BUTTON
         for coin, res in coin_results.items():
             price = res["price"]
             change_24h = res["change_24h"]
@@ -1241,279 +1216,191 @@ if current_data and len(current_data) > 0:
             investition_eur = res["investition_eur"]
             investition_pct = res["investition_pct"]
 
-            if "STARKE KAUFCHANCE" in signal:
-                entscheidung_txt = f"STARKER EINSTIEG: Portfolio-Allokation {investition_eur:,.2f} € ({investition_pct}%)"
-            elif "KAUFEN" in signal:
-                entscheidung_txt = f"MODERATER EINSTIEG: Portfolio-Allokation {investition_eur:,.2f} € ({investition_pct}%)"
-            elif "HALTEN" in signal:
-                entscheidung_txt = "HALTEN / NICHT NEU KAUFEN (0 € Allokation)"
-            else:
-                entscheidung_txt = "VORSICHT / LIEBER LASSEN (0 € Allokation)"
-
             coin_menge = investition_eur / price if price > 0 else 0.0
 
             with st.container(border=True):
-                st.markdown(f"### 🪙 {coin.upper()}")
-                col1, col2 = st.columns(2)
-                col1.metric("Aktueller Kurs", f"{price:,.2f} €", f"{change_24h:.1f}%")
-                col2.markdown(f"**Empfohlenes Signal:**\n#### {signal}")
-                st.info(
-                    f"💡 **Live-Makro & System-Begründung ({zeitraum_wahl}):** {reason}"
-                )
-                st.caption(
-                    f"🏛 **Spot-ETF Net Flow:** **{real_etf_flow:+.1f}M $** | "
-                    f"📊 **RSI (14):** **{rsi_value:.1f}** | "
-                    f"⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%** | "
-                    f"🐋 **Wal-Tracker:** {whale_msg}"
-                )
+                # 1. DIREKT SICHTBARE SONDER-ÜBERSICHT (Kompakt auf Handy)
+                col1, col2 = st.columns([1.1, 1])
+                with col1:
+                    st.markdown(f"#### 🪙 {coin}")
+                    st.metric("Kurs", f"{price:,.2f} €", f"{change_24h:+.1f}%")
+                with col2:
+                    st.markdown(f"**Signal:** {signal}")
+                    st.markdown(f"**Tranche:** **{investition_eur:,.2f} €** ({investition_pct}%)")
 
-                st.markdown(
-                    f"🛡 **ATR-Risikomanagement:** ATR(14) = **{atr_value:,.2f} €** |"
-                    f" 🛑 *Stop-Loss:* **{stop_loss:,.2f} €** | 🎯 *Take-Profit:* **{take_profit:,.2f} €**"
-                )
-
-                st.write("---")
-                st.markdown("#### 🎯 Investitions-Formel & Portfolio-Handlungsempfehlung")
-                st.markdown(f"🎯 **Handlungsempfehlung:** **{entscheidung_txt}**")
-
-                st.write("---")
-
-                st.markdown(
-                    f"💼 **Dynamisch zugewiesene Tranche:** **{investition_eur:,.2f} €** ({investition_pct}% des Gesamtbudgets)"
-                    f" entspricht ca. **{coin_menge:.4f} {coin.upper()}** (basiert auf einer Gesamttranche von **{geplantes_budget:,.2f} €**).",
-                    unsafe_allow_html=True,
-                )
-
-                st.write("---")
-                st.markdown(
-                    "#### 📊 Detaillierte Signal-Zusammensetzung (Inkl. Spot-ETF Flows)"
-                )
-                factor_scores = calculate_detailed_factor_scores(
-                    perf_val,
-                    volume,
-                    fg_value,
-                    bond_change,
-                    asian_markets,
-                    eurozone_market,
-                    stock_indices,
-                    real_etf_flow,
-                    rsi_val=rsi_value,
-                    funding_rate=funding_rate_val,
-                    weights=dynamic_weights,
-                )
-
-                df_scores = pd.DataFrame(
-                    list(factor_scores.items()), columns=["Indikator", "Score"]
-                )
-
-                chart_scores = (
-                    alt.Chart(df_scores)
-                    .mark_bar()
-                    .encode(
-                        x=alt.X(
-                            "Score:Q",
-                            scale=alt.Scale(domain=[-100, 100]),
-                            title="Einfluss auf Signal (-100 Bärisch | +100 Bullisch)",
-                        ),
-                        y=alt.Y("Indikator:N", sort=None, title=None),
-                        color=alt.condition(
-                            alt.datum.Score > 0,
-                            alt.value("#2ecc71"),
-                            alt.value("#e74c3c"),
-                        ),
-                        tooltip=["Indikator", "Score"],
-                    )
-                    .properties(height=220)
-                )
-                st.altair_chart(chart_scores, width="stretch")
-
-                if hist_price > 0:
-                    perf_color = "green" if perf_val >= 0 else "red"
+                # 2. AUFKLAPPBARE DETAILS & INTEGRATIONEN
+                with st.expander("🔍 **Details, Analyse & Chart**", expanded=False):
+                    st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
+                    
                     st.markdown(
-                        f"📈 **Rückblick ({zeitraum_wahl}):** Start mit"
-                        f" **{hist_price:,.2f} €** | Entwicklung:"
-                        f' <span style="color:{perf_color};'
-                        f' font-weight:bold;">{perf_val:+.2f}%</span>',
-                        unsafe_allow_html=True,
+                        f"🎯 **Empfehlung:** ca. **{coin_menge:.4f} {coin.upper()}** kaufen "
+                        f"({investition_eur:,.2f} € aus der Tranche)."
+                    )
+                    
+                    st.write("---")
+                    st.markdown("##### 📊 Live-Marktindikatoren & Wal-Tracker")
+                    st.caption(
+                        f"🏛 **Spot-ETF Net Flow:** **{real_etf_flow:+.1f}M $**\n\n"
+                        f"📊 **RSI (14):** **{rsi_value:.1f}**\n\n"
+                        f"⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%**\n\n"
+                        f"🐋 **Wal-Aktivität:** {whale_msg}"
                     )
 
-                if df_display is not None and not df_display.empty:
-                    min_p, max_p = df_display["Kurs"].min(), df_display["Kurs"].max()
-                    puffer = (max_p - min_p) * 0.1 or 50
-                    chart = (
-                        alt.Chart(df_display.reset_index())
-                        .mark_line(
-                            point=dict(filled=True, size=60),
-                            color="#2980b9",
-                            strokeWidth=3,
-                        )
-                        .encode(
-                            x=alt.X(
-                                "Timestamp:N",
-                                title="Zeitverlauf",
-                                sort=None,
-                                axis=alt.Axis(labelAngle=0),
-                            ),
-                            y=alt.Y(
-                                "Kurs:Q",
-                                title="Kurs in €",
-                                scale=alt.Scale(
-                                    domain=[min_p - puffer, max_p + puffer], zero=False
-                                ),
-                            ),
-                            tooltip=[
-                                alt.Tooltip("Timestamp:N", title="Zeitpunkt"),
-                                alt.Tooltip("Kurs:Q", title="Kurs (€)", format=",.2f"),
-                            ],
-                        )
-                        .properties(height=280)
+                    st.write("---")
+                    st.markdown("##### 🛡️ ATR Risikomanagement")
+                    st.write(f"• **ATR (14):** {atr_value:,.2f} €")
+                    st.write(f"• 🛑 **Stop-Loss:** **{stop_loss:,.2f} €**")
+                    st.write(f"• 🎯 **Take-Profit:** **{take_profit:,.2f} €**")
+
+                    st.write("---")
+                    st.markdown("##### 📊 Signal-Zusammensetzung Score")
+                    factor_scores = calculate_detailed_factor_scores(
+                        perf_val,
+                        volume,
+                        fg_value,
+                        bond_change,
+                        asian_markets,
+                        eurozone_market,
+                        stock_indices,
+                        real_etf_flow,
+                        rsi_val=rsi_value,
+                        funding_rate=funding_rate_val,
+                        weights=dynamic_weights,
                     )
-                    st.altair_chart(chart, width="stretch")
+
+                    df_scores = pd.DataFrame(
+                        list(factor_scores.items()), columns=["Indikator", "Score"]
+                    )
+
+                    chart_scores = (
+                        alt.Chart(df_scores)
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("Score:Q", scale=alt.Scale(domain=[-100, 100]), title="Bärisch (-100) | Bullisch (+100)"),
+                            y=alt.Y("Indikator:N", sort=None, title=None),
+                            color=alt.condition(
+                                alt.datum.Score > 0,
+                                alt.value("#2ecc71"),
+                                alt.value("#e74c3c"),
+                            ),
+                            tooltip=["Indikator", "Score"],
+                        )
+                        .properties(height=200)
+                    )
+                    st.altair_chart(chart_scores, width="stretch")
+
+                    if hist_price > 0:
+                        perf_color = "green" if perf_val >= 0 else "red"
+                        st.markdown(
+                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.2f} €** | "
+                            f'Entwicklung: <span style="color:{perf_color}; font-weight:bold;">{perf_val:+.2f}%</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                    if df_display is not None and not df_display.empty:
+                        min_p, max_p = df_display["Kurs"].min(), df_display["Kurs"].max()
+                        puffer = (max_p - min_p) * 0.1 or 50
+                        chart = (
+                            alt.Chart(df_display.reset_index())
+                            .mark_line(
+                                point=dict(filled=True, size=50),
+                                color="#2980b9",
+                                strokeWidth=2.5,
+                            )
+                            .encode(
+                                x=alt.X("Timestamp:N", title=None, sort=None, axis=alt.Axis(labelAngle=0)),
+                                y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False)),
+                                tooltip=[alt.Tooltip("Timestamp:N"), alt.Tooltip("Kurs:Q", format=",.2f")],
+                            )
+                            .properties(height=220)
+                        )
+                        st.altair_chart(chart, width="stretch")
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
 st.write("---")
-st.markdown("### 📊 Globaler Markt, Leitmärkte & Makro-Übersicht")
 
-bar_color = (
-    "#e74c3c"
-    if fg_value > 70
-    else ("#f39c12" if fg_value >= 45 else "#2ecc71")
-)
+# --- 2. GLOBALER MARKT & MAKRO-ÜBERSICHT (KOMPAKT & AUFKLAPPBAR) ---
+bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
 with st.container(border=True):
-    st.markdown("📊 **Globaler Markt-, Euroraum- & Sentiment-Index**")
+    st.markdown(f"📊 **Sentiment-Index:** **{fg_value} / 100** ({fg_text}) {signal_icon}")
     st.markdown(
         f"""
-        <div style="margin-bottom: 6px; font-size: 15px;">
-            Aktueller Wert: <b>{fg_value} / 100</b> — <i>{fg_text}</i> {signal_icon}
+        <div style="background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 12px; overflow: hidden; margin-top: 4px; margin-bottom: 8px;">
+            <div style="background-color: {bar_color}; width: {fg_value}%; height: 100%;"></div>
         </div>
-        <div style="background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 16px; overflow: hidden; margin-bottom: 8px;">
-            <div style="background-color: {bar_color}; width: {fg_value}%; height: 100%; border-radius: 10px 0 0 10px;"></div>
-        </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    if bond_val is not None:
-        bt_text = (
-            "📈 Steigend (Gegenwind)"
-            if bond_change > 0
-            else "📉 Fallend (Rückenwind)"
-        )
-        st.caption(
-            f"🏛 **US-10J Zinsindikator:** **{bond_val:.2f}%** ({bond_change:+.2f}%)"
-            f" | Trend: *{bt_text}*"
-        )
-
-    dxy_c = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
-    eur_c = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
-    gold_c = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
-    oil_c = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
-
-    st.markdown(
-        f'💵 **US Dollar Index (DXY):** **{ext_macro.get("dxy_val", 0):.2f}** (<span'
-        f' style="color:{dxy_c};">{ext_macro.get("dxy_chg", 0):+.2f}%</span>)'
-        f' &nbsp;|&nbsp; 💶 **EUR/USD:**'
-        f' **{ext_macro.get("eurusd_val", 0):.4f}** (<span'
-        f' style="color:{eur_c};">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
+        """,
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f'🥇 <b>Gold-Spot:</b> <b>{ext_macro.get("gold_val", 0):,.2f} $</b> (<span'
-        f' style="color:{gold_c};">{ext_macro.get("gold_chg", 0):+.2f}%</span>)'
-        f' &nbsp;|&nbsp; 🛢 <b>WTI Öl:</b>'
-        f' <b>{ext_macro.get("oil_val", 0):,.2f} $</b> (<span'
-        f' style="color:{oil_c};">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
-        unsafe_allow_html=True,
-    )
+    with st.expander("🌐 **Globale Leitmärkte & Makro-Details**", expanded=False):
+        if bond_val is not None:
+            bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
+            st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
 
-    etf_color = "green" if real_etf_flow >= 0 else "red"
-    st.markdown(
-        f'🏦 **US Spot-ETF Netto-Kapitalfluss:** &nbsp;&nbsp; <span'
-        f' style="color:{etf_color};'
-        f' font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> (Tagesbasis)',
-        unsafe_allow_html=True,
-    )
-
-    if stock_indices:
-        sp500_v = stock_indices.get("SP500", {}).get("val", 0)
-        sp500_c = stock_indices.get("SP500", {}).get("chg", 0)
-        dax_v = stock_indices.get("DAX", {}).get("val", 0)
-        dax_c = stock_indices.get("DAX", {}).get("chg", 0)
-
-        sp500_col = "green" if sp500_c >= 0 else "red"
-        dax_col = "green" if dax_c >= 0 else "red"
+        dxy_c = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
+        eur_c = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
+        gold_c = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
+        oil_c = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
 
         st.markdown(
-            f'📈 **Globale Leitmärkte:** &nbsp;&nbsp; S&P 500: **{sp500_v:,.0f}** (<span style="color:{sp500_col};">{sp500_c:+.2f}%</span>) &nbsp;|&nbsp; DAX: **{dax_v:,.0f}** (<span style="color:{dax_col};">{dax_c:+.2f}%</span>)',
+            f'💵 **DXY:** **{ext_macro.get("dxy_val", 0):.2f}** (<span style="color:{dxy_c};">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) | '
+            f'💶 **EUR/USD:** **{ext_macro.get("eurusd_val", 0):.4f}** (<span style="color:{eur_c};">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
-    if asian_markets:
-        n_val = asian_markets.get("Nikkei_225", {}).get("value", 0)
-        n_chg = asian_markets.get("Nikkei_225", {}).get("change", 0)
-        h_val = asian_markets.get("Hang_Seng", {}).get("value", 0)
-        h_chg = asian_markets.get("Hang_Seng", {}).get("change", 0)
-
-        n_col = "green" if n_chg >= 0 else "red"
-        h_col = "green" if h_chg >= 0 else "red"
-
         st.markdown(
-            f'🌏 **Asiatische Leitmärkte:** &nbsp;&nbsp; Nikkei 225: **{n_val:,.0f}** (<span style="color:{n_col};">{n_chg:+.2f}%</span>) &nbsp;|&nbsp; Hang Seng: **{h_val:,.0f}** (<span style="color:{h_col};">{h_chg:+.2f}%</span>)',
+            f'🥇 **Gold:** **{ext_macro.get("gold_val", 0):,.1f} $** (<span style="color:{gold_c};">{ext_macro.get("gold_chg", 0):+.2f}%</span>) | '
+            f'🛢 **Öl:** **{ext_macro.get("oil_val", 0):,.1f} $** (<span style="color:{oil_c};">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
-# 3. EXPANDER 1: AUTONOMES SELBSTLERNENDES OPTIMIERUNGS-MODUL & BACKTEST
+        etf_color = "green" if real_etf_flow >= 0 else "red"
+        st.markdown(
+            f'🏦 **Spot-ETF Nettofluss:** <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span>',
+            unsafe_allow_html=True,
+        )
+
+        if stock_indices:
+            sp500_v, sp500_c = stock_indices.get("SP500", {}).get("val", 0), stock_indices.get("SP500", {}).get("chg", 0)
+            dax_v, dax_c = stock_indices.get("DAX", {}).get("val", 0), stock_indices.get("DAX", {}).get("chg", 0)
+            st.write(f"📈 **S&P 500:** {sp500_v:,.0f} ({sp500_c:+.2f}%) | **DAX:** {dax_v:,.0f} ({dax_c:+.2f}%)")
+
+        if asian_markets:
+            n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
+            h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
+            st.write(f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | **Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%)")
+
+# --- 3. EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT ---
 st.write("")
-with st.expander(
-    "🧠 **Autonomes Selbstlern-System & Backtest-Visualisierung**", expanded=False
-):
-    st.markdown(
-        "Dieses Modul wertet deine protokollierten Prognosen über die letzten **365"
-        " Tage** vollständig lokal aus und vergleicht die Signal-Strategie mit"
-        " einer klassischen Buy-and-Hold-Anlage."
-    )
+with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
+    st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage** im Vergleich zu Buy-and-Hold.")
 
     if os.path.exists(LOG_FILE):
         try:
             df_archive = pd.read_csv(LOG_FILE)
-            
             if "Datenquelle" not in df_archive.columns:
                 df_archive["Datenquelle"] = "Binance Spot REST API"
             else:
                 df_archive["Datenquelle"] = df_archive["Datenquelle"].fillna("Binance Spot REST API")
-                df_archive["Datenquelle"] = df_archive["Datenquelle"].replace(["None", "nan", ""], "Binance Spot REST API")
-            
             df_archive.to_csv(LOG_FILE, index=False)
 
             if not df_archive.empty and current_data:
-                comparison_rows = []
-                correct_hits = 0
-                total_evaluated = 0
-
-                backtest_data = []
-                sim_depot_signal = 100.0
-                sim_depot_hold = 100.0
+                comparison_rows, backtest_data = [], []
+                correct_hits, total_evaluated = 0, 0
+                sim_depot_signal, sim_depot_hold = 100.0, 100.0
 
                 for index, row in df_archive.iterrows():
                     c_name = row["Coin"]
                     kurs_damals = row["Kurs_Damals"]
                     signal_damals = str(row["Signal"])
                     datum = row["Datum"]
-                    q_quelle = (
-                        row["Datenquelle"]
-                        if "Datenquelle" in row
-                        else "Binance Spot REST API"
-                    )
+                    q_quelle = row.get("Datenquelle", "Binance Spot REST API")
 
                     kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
-                    diff_pct = (
-                        ((kurs_aktuell - kurs_damals) / kurs_damals) * 100
-                        if kurs_damals > 0 and kurs_aktuell > 0
-                        else 0.0
-                    )
+                    diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
 
                     if "KAUF" in signal_damals.upper():
                         sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
@@ -1521,8 +1408,8 @@ with st.expander(
 
                     backtest_data.append({
                         "Datum": datum,
-                        "Strategie (App-Signale)": round(sim_depot_signal, 2),
-                        "Benchmark (Buy & Hold)": round(sim_depot_hold, 2),
+                        "App-Strategie": round(sim_depot_signal, 2),
+                        "Buy & Hold": round(sim_depot_hold, 2),
                     })
 
                     evaluation = "Neutral 🟡"
@@ -1530,194 +1417,95 @@ with st.expander(
                         total_evaluated += 1
                         if diff_pct > -1.5:
                             correct_hits += 1
-                            evaluation = "Erfolgreicher Treffer 🟢"
+                            evaluation = "Treffer 🟢"
                         else:
-                            evaluation = "Fehlsignal (Kurs nachgebend) 🔴"
+                            evaluation = "Fehlsignal 🔴"
                     elif "VORSICHT" in signal_damals.upper():
                         total_evaluated += 1
                         if diff_pct < 1.5:
                             correct_hits += 1
-                            evaluation = "Erfolgreicher Schutz / Seitwärts 🟢"
+                            evaluation = "Schutz 🟢"
                         else:
-                            evaluation = "Leichter Aufschwung verpasst 🟡"
+                            evaluation = "Seitwärts 🟡"
 
                     comparison_rows.append({
-                        "Abruf-Zeitpunkt": datum,
+                        "Datum": datum,
                         "Coin": c_name,
                         "Signal": signal_damals,
                         "Kurs Damals": f"{kurs_damals:,.2f} €",
                         "Aktuell": f"{kurs_aktuell:,.2f} €",
-                        "Entwicklung": f"{diff_pct:+.2f}%",
+                        "Diff": f"{diff_pct:+.2f}%",
                         "Auswertung": evaluation,
-                        "Datenquelle": q_quelle,
                     })
 
                 df_comp = pd.DataFrame(comparison_rows)
                 st.dataframe(df_comp, width="stretch", hide_index=True)
 
                 st.write("---")
-                st.markdown(
-                    "### 📈 Backtest-Vergleich: App-Strategie vs. Buy & Hold"
-                )
+                st.markdown("##### 📈 Backtest-Vergleich")
                 df_bt = pd.DataFrame(backtest_data)
                 if not df_bt.empty:
-                    df_bt_melted = df_bt.melt(
-                        id_vars=["Datum"],
-                        value_vars=[
-                            "Strategie (App-Signale)",
-                            "Benchmark (Buy & Hold)",
-                        ],
-                        var_name="Strategie",
-                        value_name="Wert",
-                    )
+                    df_bt_melted = df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")
                     chart_bt = (
                         alt.Chart(df_bt_melted)
                         .mark_line(strokeWidth=2)
                         .encode(
-                            x=alt.X("Datum:N", title="Zeitverlauf", sort=None),
-                            y=alt.Y(
-                                "Wert:Q",
-                                title="Depotwert (Start = 100 €)",
-                                scale=alt.Scale(zero=False),
-                            ),
-                            color=alt.Color(
-                                "Strategie:N",
-                                scale=alt.Scale(
-                                    domain=[
-                                        "Strategie (App-Signale)",
-                                        "Benchmark (Buy & Hold)",
-                                    ],
-                                    range=["#2ecc71", "#e74c3c"],
-                                ),
-                            ),
+                            x=alt.X("Datum:N", title=None, sort=None),
+                            y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)),
+                            color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"])),
                             tooltip=["Datum", "Strategie", "Wert"],
                         )
-                        .properties(height=260)
+                        .properties(height=220)
                     )
                     st.altair_chart(chart_bt, width="stretch")
 
-                st.write("---")
-                st.markdown(
-                    "### 🤖 Autonome Prognose-Trefferquote (12-Monats-Basis)"
-                )
                 if total_evaluated > 0:
                     hit_rate = (correct_hits / total_evaluated) * 100
-                    st.metric(
-                        "Ermittelte Signal-Trefferquote",
-                        f"{hit_rate:.1f}%",
-                        f"{correct_hits} von {total_evaluated} Zyklen erfolgreich",
-                    )
+                    st.metric("Signal-Trefferquote", f"{hit_rate:.1f}%", f"{correct_hits} von {total_evaluated} Zyklen erfolgreich")
 
                 st.write("---")
                 st.markdown(local_learning_report)
 
                 st.write("---")
-                st.markdown("### 💾 CSV-Export & Lokales Backup")
+                st.markdown("##### 💾 CSV-Export & Backup")
                 col_d1, col_d2, col_d3 = st.columns(3)
                 if os.path.exists(LOG_FILE):
                     with open(LOG_FILE, "rb") as f:
-                        col_d1.download_button(
-                            "📥 prediction_log.csv",
-                            f,
-                            file_name="prediction_log.csv",
-                            mime="text/csv",
-                            width="stretch",
-                        )
+                        col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", width="stretch")
                 if os.path.exists(MARKET_LOG_FILE):
                     with open(MARKET_LOG_FILE, "rb") as f:
-                        col_d2.download_button(
-                            "📥 market_data_log.csv",
-                            f,
-                            file_name="market_data_log.csv",
-                            mime="text/csv",
-                            width="stretch",
-                        )
+                        col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", width="stretch")
                 if os.path.exists(IMP_FILE):
                     with open(IMP_FILE, "rb") as f:
-                        col_d3.download_button(
-                            "📥 improvements_log.csv",
-                            f,
-                            file_name="improvements_log.csv",
-                            mime="text/csv",
-                            width="stretch",
-                        )
+                        col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", width="stretch")
         except Exception as e:
             st.warning(f"Fehler: {e}")
-    else:
-        st.info("Das Prognose-Archiv baut sich im laufenden Betrieb auf.")
 
-# 4. EXPANDER 2: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV
+# --- 4. EXPANDER: HISTORISCHES MAKRO-ARCHIV ---
 st.write("")
-with st.expander(
-    "📊 **Historisches Makro- & Stimmungsdaten-Archiv**",
-    expanded=False,
-):
-    st.markdown(
-        "Chronologische Übersicht aller erfassten Makro-, Aktien-, Zins-, Devisen-,"
-        " Rohstoff- und Stimmungsdaten der letzten **365 Tage**."
-    )
-
+with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
                 macro_display_rows = []
-                macro_correct_hits = 0
-                macro_total_evaluated = 0
-
                 for idx, row in df_market_log.iterrows():
                     d_val = row.get("Datum", "-")
                     fg_w = row.get("FearGreed_Wert", 50)
                     us_y = row.get("US_10J_Rendite", 0.0)
-                    us_c = row.get("US_10J_Veränderung", 0.0)
+                    etf_flow_log = row.get("Spot_ETF_NetFlow_MUSD", 0.0)
                     
-                    dxy_v = row["DXY_Wert"] if "DXY_Wert" in row and pd.notna(row["DXY_Wert"]) else None
-                    gold_v = row["Gold_Wert"] if "Gold_Wert" in row and pd.notna(row["Gold_Wert"]) else None
-                    sp500_v = row["SP500_Wert"] if "SP500_Wert" in row and pd.notna(row["SP500_Wert"]) else None
-                    dax_v = row["DAX_Wert"] if "DAX_Wert" in row and pd.notna(row["DAX_Wert"]) else None
-
-                    etf_flow_log = (
-                        row["Spot_ETF_NetFlow_MUSD"]
-                        if "Spot_ETF_NetFlow_MUSD" in row and pd.notna(row["Spot_ETF_NetFlow_MUSD"])
-                        else 0.0
-                    )
-                    q_date = (
-                        row["Quellen_Hinzugefügt_Am"]
-                        if "Quellen_Hinzugefügt_Am" in row
-                        else "2026-10-05"
-                    )
-
-                    impact = "Neutral 🟡"
-                    if us_c > 0.05 or fg_w >= 75 or etf_flow_log < -100.0:
-                        macro_total_evaluated += 1
-                        macro_correct_hits += 1
-                        impact = "Gegenwind 🔴"
-                    elif us_c < -0.05 or fg_w <= 25 or etf_flow_log > 100.0:
-                        macro_total_evaluated += 1
-                        macro_correct_hits += 1
-                        impact = "Rückenwind 🟢"
-
                     macro_display_rows.append({
-                        "Abruf-Zeitpunkt": d_val,
+                        "Datum": d_val,
                         "Fear & Greed": f"{fg_w} / 100",
                         "US 10J Zins": f"{us_y:.2f}%",
-                        "S&P 500": f"{sp500_v:,.0f}" if sp500_v is not None else "-",
-                        "DAX": f"{dax_v:,.0f}" if dax_v is not None else "-",
-                        "DXY": f"{dxy_v:.2f}" if dxy_v is not None else "-",
-                        "Gold ($)": f"{gold_v:,.1f}" if gold_v is not None else "-",
                         "Spot-ETF NetFlow": f"{etf_flow_log:+.1f}M $",
-                        "Marktauswirkung": impact,
-                        "Quellen-Änderungsdatum": q_date,
                     })
 
                 df_macro_table = pd.DataFrame(macro_display_rows)
-                df_macro_table = df_macro_table.fillna("-")
                 st.dataframe(df_macro_table, width="stretch", hide_index=True)
         except Exception as e:
             st.warning(f"Fehler beim Laden des Makro-Archivs: {e}")
 
 st.markdown("---")
-st.caption(
-    "⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale basieren"
-    " auf automatisierten Marktregeln und dienen rein zu Bildungszwecken."
-)
+st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
