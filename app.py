@@ -77,7 +77,7 @@ def check_password():
         st.markdown("## 🔒 Krypto-Kompass — Zugangsschutz")
         st.info("Bitte gib das Passwort ein, um auf den Krypto-Kompass zuzugreifen.")
         eingabe = st.text_input("Passwort:", type="password")
-        if st.button("Anmelden", width="stretch"):
+        if st.button("Anmelden", use_container_width=True):
             passwort_soll = st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123")
             if eingabe == passwort_soll:
                 st.session_state.authenticated = True
@@ -95,7 +95,7 @@ col_title, col_btn = st.columns([2, 1])
 with col_title:
     st.markdown("### 🪙 Krypto-Kompass")
 with col_btn:
-    if st.button("🔄 Aktualisieren", width="stretch"):
+    if st.button("🔄 Aktualisieren", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -137,22 +137,23 @@ def get_current_data():
         response = requests.get(url, timeout=4)
         if response.status_code == 200:
             res_json = response.json()
-            ticker_dict = {item["symbol"]: item for item in res_json if "symbol" in item}
-            for name, symbol in coins.items():
-                if symbol in ticker_dict:
-                    item = ticker_dict[symbol]
-                    data[name] = {
-                        "eur": float(item["lastPrice"]),
-                        "eur_24h_change": float(item["priceChangePercent"]),
-                        "volume": float(item["quoteVolume"]),
-                    }
+            if isinstance(res_json, list):
+                ticker_dict = {item["symbol"]: item for item in res_json if isinstance(item, dict) and "symbol" in item}
+                for name, symbol in coins.items():
+                    if symbol in ticker_dict:
+                        item = ticker_dict[symbol]
+                        data[name] = {
+                            "eur": float(item["lastPrice"]),
+                            "eur_24h_change": float(item["priceChangePercent"]),
+                            "volume": float(item["quoteVolume"]),
+                        }
     except Exception:
         pass
 
     if len(data) < len(coins):
-        try:
-            for name, yf_sym in yf_map.items():
-                if name not in data:
+        for name, yf_sym in yf_map.items():
+            if name not in data:
+                try:
                     t = yf.Ticker(yf_sym)
                     hist = t.history(period="5d")
                     if not hist.empty and len(hist) >= 1:
@@ -165,8 +166,8 @@ def get_current_data():
                             "eur_24h_change": chg,
                             "volume": vol,
                         }
-        except Exception:
-            pass
+                except Exception:
+                    pass
 
     return data if data else None
 
@@ -180,7 +181,7 @@ def get_real_spot_etf_flows():
         response = requests.get(url, headers=headers, timeout=4)
         if response.status_code == 200:
             res_json = response.json()
-            if res_json.get("success") and res_json.get("data"):
+            if isinstance(res_json, dict) and res_json.get("success") and res_json.get("data"):
                 latest_flow = float(res_json["data"][-1].get("totalNetIngressUsd", 0)) / 1_000_000.0
                 if latest_flow != 0:
                     return round(latest_flow, 2)
@@ -192,7 +193,7 @@ def get_real_spot_etf_flows():
         res = requests.get(url_alt, timeout=4)
         if res.status_code == 200:
             data = res.json().get("data", [])
-            if data:
+            if data and isinstance(data, list):
                 return round(float(data[-1].get("totalNetFlow", 0)), 2)
     except Exception:
         pass
@@ -208,8 +209,9 @@ def get_fear_and_greed():
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             res = response.json()
-            data = res["data"][0]
-            return int(data["value"]), data["value_classification"]
+            if "data" in res and len(res["data"]) > 0:
+                data = res["data"][0]
+                return int(data["value"]), data["value_classification"]
     except Exception:
         pass
     return 50, "Neutral"
@@ -223,20 +225,24 @@ def get_vix_and_nasdaq():
         vix = yf.Ticker("^VIX")
         v_hist = vix.history(period="5d")
         if not v_hist.empty:
-            val = v_hist["Close"].iloc[-1]
-            prev = v_hist["Close"].iloc[0]
-            data["vix_val"] = float(val)
+            val = float(v_hist["Close"].iloc[-1])
+            prev = float(v_hist["Close"].iloc[0])
+            data["vix_val"] = val
             data["vix_chg"] = float(((val - prev) / prev) * 100) if prev > 0 else 0.0
+    except Exception:
+        pass
 
+    try:
         ndx = yf.Ticker("^NDX")
         n_hist = ndx.history(period="5d")
         if not n_hist.empty:
-            n_val = n_hist["Close"].iloc[-1]
-            n_prev = n_hist["Close"].iloc[0]
-            data["nasdaq_val"] = float(n_val)
+            n_val = float(n_hist["Close"].iloc[-1])
+            n_prev = float(n_hist["Close"].iloc[0])
+            data["nasdaq_val"] = n_val
             data["nasdaq_chg"] = float(((n_val - n_prev) / n_prev) * 100) if n_prev > 0 else 0.0
     except Exception:
         pass
+
     return data
 
 
@@ -261,7 +267,8 @@ def get_news_sentiment_score():
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
-            articles = response.json().get("Data", [])[:15]
+            res_json = response.json()
+            articles = res_json.get("Data", [])[:15] if isinstance(res_json, dict) else []
             for art in articles:
                 title = art.get("title", "")
                 body = art.get("body", "")
@@ -291,7 +298,7 @@ def get_defillama_metrics():
         url = "https://stablecoins.llama.fi/stablecoins?includePrices=true"
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
-            data = res.json().get("peggedAssets", [])
+            data = res.json().get("peggedAssets", []) if isinstance(res.json(), dict) else []
             usdt = next((item for item in data if item.get("symbol") == "USDT"), None)
             usdc = next((item for item in data if item.get("symbol") == "USDC"), None)
             
@@ -299,15 +306,20 @@ def get_defillama_metrics():
             usdc_mcap = usdc.get("circulating", {}).get("peggedUSD", 0) if usdc else 0
             
             res_data["stablecoin_mcap_b"] = round((usdt_mcap + usdc_mcap) / 1_000_000_000.0, 2)
+    except Exception:
+        pass
 
+    try:
         tvl_url = "https://api.llama.fi/v2/chains"
         tvl_res = requests.get(tvl_url, timeout=5)
         if tvl_res.status_code == 200:
             chains = tvl_res.json()
-            total_tvl = sum(c.get("tvl", 0) for c in chains if isinstance(c, dict))
-            res_data["global_tvl_b"] = round(total_tvl / 1_000_000_000.0, 2)
+            if isinstance(chains, list):
+                total_tvl = sum(c.get("tvl", 0) for c in chains if isinstance(c, dict))
+                res_data["global_tvl_b"] = round(total_tvl / 1_000_000_000.0, 2)
     except Exception:
         pass
+
     return res_data
 
 
@@ -324,15 +336,15 @@ def get_btc_dominance():
     return 56.5
 
 
-# 8. Makro-Daten & Leitmärkte
+# 8. Makro-Daten & Leitmärkte (ISOLIERTE FEHLERBEHANDLUNG PRO TICKER)
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
         tnx = yf.Ticker("^TNX")
         hist = tnx.history(period="5d")
         if not hist.empty:
-            current_yield = hist["Close"].iloc[-1]
-            prev_yield = hist["Close"].iloc[0]
+            current_yield = float(hist["Close"].iloc[-1])
+            prev_yield = float(hist["Close"].iloc[0])
             return current_yield, (current_yield - prev_yield)
     except Exception:
         pass
@@ -344,43 +356,42 @@ def get_extended_macro_data():
     data = {
         "dxy_val": 0.0, "dxy_chg": 0.0,
         "eurusd_val": 0.0, "eurusd_chg": 0.0,
+        "usdjpy_val": 0.0, "usdjpy_chg": 0.0,
         "gold_val": 0.0, "gold_chg": 0.0,
+        "silver_val": 0.0, "silver_chg": 0.0,
         "oil_val": 0.0, "oil_chg": 0.0,
+        "copper_val": 0.0, "copper_chg": 0.0,
+        "dow_val": 0.0, "dow_chg": 0.0,
+        "ftse_val": 0.0, "ftse_chg": 0.0,
+        "sse_val": 0.0, "sse_chg": 0.0,
     }
-    try:
-        dxy = yf.Ticker("DX-Y.NYB")
-        d_hist = dxy.history(period="5d")
-        if not d_hist.empty:
-            val = d_hist["Close"].iloc[-1]
-            prev = d_hist["Close"].iloc[0]
-            data["dxy_val"] = val
-            data["dxy_chg"] = ((val - prev) / prev) * 100
+    
+    tickers_map = {
+        "dxy": "DX-Y.NYB",
+        "eurusd": "EURUSD=X",
+        "usdjpy": "JPY=X",
+        "gold": "GC=F",
+        "silver": "SI=F",
+        "oil": "CL=F",
+        "copper": "HG=F",
+        "dow": "^DJI",
+        "ftse": "^FTSE",
+        "sse": "000001.SS",
+    }
 
-        eur = yf.Ticker("EURUSD=X")
-        e_hist = eur.history(period="5d")
-        if not e_hist.empty:
-            val = e_hist["Close"].iloc[-1]
-            prev = e_hist["Close"].iloc[0]
-            data["eurusd_val"] = val
-            data["eurusd_chg"] = ((val - prev) / prev) * 100
+    for key, sym in tickers_map.items():
+        try:
+            t = yf.Ticker(sym)
+            h = t.history(period="5d")
+            if not h.empty and len(h) >= 1:
+                val = float(h["Close"].iloc[-1])
+                prev = float(h["Close"].iloc[0])
+                chg = ((val - prev) / prev) * 100 if prev > 0 else 0.0
+                data[f"{key}_val"] = val
+                data[f"{key}_chg"] = chg
+        except Exception:
+            continue
 
-        gold = yf.Ticker("GC=F")
-        g_hist = gold.history(period="5d")
-        if not g_hist.empty:
-            val = g_hist["Close"].iloc[-1]
-            prev = g_hist["Close"].iloc[0]
-            data["gold_val"] = val
-            data["gold_chg"] = ((val - prev) / prev) * 100
-
-        oil = yf.Ticker("CL=F")
-        o_hist = oil.history(period="5d")
-        if not o_hist.empty:
-            val = o_hist["Close"].iloc[-1]
-            prev = o_hist["Close"].iloc[0]
-            data["oil_val"] = val
-            data["oil_chg"] = ((val - prev) / prev) * 100
-    except Exception:
-        pass
     return data
 
 
@@ -388,49 +399,50 @@ def get_extended_macro_data():
 def get_stock_indices():
     indices = {"SP500": "^GSPC", "DAX": "^GDAXI"}
     results = {}
-    try:
-        for name, ticker in indices.items():
+    for name, ticker in indices.items():
+        try:
             t = yf.Ticker(ticker)
             hist = t.history(period="5d")
             if not hist.empty:
-                val = hist["Close"].iloc[-1]
-                prev = hist["Close"].iloc[0]
-                chg = ((val - prev) / prev) * 100
+                val = float(hist["Close"].iloc[-1])
+                prev = float(hist["Close"].iloc[0])
+                chg = ((val - prev) / prev) * 100 if prev > 0 else 0.0
                 results[name] = {"val": val, "chg": chg}
-    except Exception:
-        pass
+        except Exception:
+            pass
     return results
 
 
 @st.cache_data(ttl=60)
 def get_asian_markets():
+    data = {}
     try:
         nikkei = yf.Ticker("^N225")
-        hsi = yf.Ticker("^HSI")
-
         nikkei_hist = nikkei.history(period="5d")
-        hsi_hist = hsi.history(period="5d")
-
-        data = {}
         if not nikkei_hist.empty:
-            n_close = nikkei_hist["Close"].iloc[-1]
-            n_prev = nikkei_hist["Close"].iloc[0]
+            n_close = float(nikkei_hist["Close"].iloc[-1])
+            n_prev = float(nikkei_hist["Close"].iloc[0])
             data["Nikkei_225"] = {
                 "value": n_close,
-                "change": ((n_close - n_prev) / n_prev) * 100,
+                "change": ((n_close - n_prev) / n_prev) * 100 if n_prev > 0 else 0.0,
             }
+    except Exception:
+        pass
 
+    try:
+        hsi = yf.Ticker("^HSI")
+        hsi_hist = hsi.history(period="5d")
         if not hsi_hist.empty:
-            h_close = hsi_hist["Close"].iloc[-1]
-            h_prev = hsi_hist["Close"].iloc[0]
+            h_close = float(hsi_hist["Close"].iloc[-1])
+            h_prev = float(hsi_hist["Close"].iloc[0])
             data["Hang_Seng"] = {
                 "value": h_close,
-                "change": ((h_close - h_prev) / h_prev) * 100,
+                "change": ((h_close - h_prev) / h_prev) * 100 if h_prev > 0 else 0.0,
             }
-
-        return data
     except Exception:
-        return None
+        pass
+
+    return data if data else None
 
 
 @st.cache_data(ttl=60)
@@ -439,9 +451,9 @@ def get_eurozone_market():
         stoxx = yf.Ticker("^STOXX50E")
         hist = stoxx.history(period="5d")
         if not hist.empty:
-            close_val = hist["Close"].iloc[-1]
-            prev_val = hist["Close"].iloc[0]
-            change_val = ((close_val - prev_val) / prev_val) * 100
+            close_val = float(hist["Close"].iloc[-1])
+            prev_val = float(hist["Close"].iloc[0])
+            change_val = ((close_val - prev_val) / prev_val) * 100 if prev_val > 0 else 0.0
             return {"value": close_val, "change": change_val}
     except Exception:
         pass
@@ -465,25 +477,26 @@ def calculate_atr(symbol, limit=30):
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
             raw = response.json()
-            df = pd.DataFrame(
-                raw,
-                columns=[
-                    "open_time", "open", "high", "low", "close", "volume",
-                    "close_time", "quote_asset_volume", "num_trades",
-                    "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
-                ],
-            )
-            df["high"] = df["high"].astype(float)
-            df["low"] = df["low"].astype(float)
-            df["close"] = df["close"].astype(float)
+            if isinstance(raw, list) and len(raw) > 0:
+                df = pd.DataFrame(
+                    raw,
+                    columns=[
+                        "open_time", "open", "high", "low", "close", "volume",
+                        "close_time", "quote_asset_volume", "num_trades",
+                        "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
+                    ],
+                )
+                df["high"] = df["high"].astype(float)
+                df["low"] = df["low"].astype(float)
+                df["close"] = df["close"].astype(float)
 
-            df["tr1"] = df["high"] - df["low"]
-            df["tr2"] = abs(df["high"] - df["close"].shift(1))
-            df["tr3"] = abs(df["low"] - df["close"].shift(1))
-            df["tr"] = df[["tr1", "tr2", "tr3"]].max(axis=1)
+                df["tr1"] = df["high"] - df["low"]
+                df["tr2"] = abs(df["high"] - df["close"].shift(1))
+                df["tr3"] = abs(df["low"] - df["close"].shift(1))
+                df["tr"] = df[["tr1", "tr2", "tr3"]].max(axis=1)
 
-            atr = df["tr"].rolling(window=14).mean().iloc[-1]
-            return float(atr)
+                atr = df["tr"].rolling(window=14).mean().iloc[-1]
+                return float(atr)
     except Exception:
         pass
 
@@ -516,21 +529,22 @@ def get_real_rsi(symbol, limit=30):
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
             raw = response.json()
-            df = pd.DataFrame(
-                raw,
-                columns=[
-                    "open_time", "open", "high", "low", "close", "volume",
-                    "close_time", "quote_asset_volume", "num_trades",
-                    "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
-                ],
-            )
-            df["close"] = df["close"].astype(float)
-            delta = df["close"].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            return round(float(rsi.iloc[-1]), 2)
+            if isinstance(raw, list) and len(raw) > 0:
+                df = pd.DataFrame(
+                    raw,
+                    columns=[
+                        "open_time", "open", "high", "low", "close", "volume",
+                        "close_time", "quote_asset_volume", "num_trades",
+                        "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume", "ignore",
+                    ],
+                )
+                df["close"] = df["close"].astype(float)
+                delta = df["close"].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                return round(float(rsi.iloc[-1]), 2)
     except Exception:
         pass
 
@@ -566,7 +580,8 @@ def get_real_funding_rate(coin_name="Bitcoin"):
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            return float(data.get("lastFundingRate", 0.0001))
+            if isinstance(data, dict):
+                return float(data.get("lastFundingRate", 0.0001))
     except Exception:
         pass
     return 0.0001
@@ -865,19 +880,20 @@ def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
         response = requests.get(url, timeout=4)
         if response.status_code == 200:
             raw_data = response.json()
-            dates = [
-                pd.to_datetime(entry[0], unit='ms')
-                .tz_localize('UTC')
-                .tz_convert(BERLIN_TZ)
-                .tz_localize(None)
-                for entry in raw_data
-            ]
-            prices = [float(entry[4]) for entry in raw_data]
-            df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
-            df.set_index("Timestamp", inplace=True)
-            if weekly:
-                df = df.resample("W").mean().dropna()
-            return df.sort_index(ascending=True)
+            if isinstance(raw_data, list) and len(raw_data) > 0:
+                dates = [
+                    pd.to_datetime(entry[0], unit='ms')
+                    .tz_localize('UTC')
+                    .tz_convert(BERLIN_TZ)
+                    .tz_localize(None)
+                    for entry in raw_data
+                ]
+                prices = [float(entry[4]) for entry in raw_data]
+                df = pd.DataFrame({"Timestamp": dates, "Kurs": prices})
+                df.set_index("Timestamp", inplace=True)
+                if weekly:
+                    df = df.resample("W").mean().dropna()
+                return df.sort_index(ascending=True)
     except Exception:
         pass
 
@@ -943,10 +959,16 @@ def log_market_data(
         "SP500_Veränderung": sp500_c,
         "DAX_Wert": dax_v,
         "DAX_Veränderung": dax_c,
+        "DowJones_Wert": round(ext_macro.get("dow_val", 0.0), 2),
+        "DowJones_Veränderung": round(ext_macro.get("dow_chg", 0.0), 2),
+        "FTSE100_Wert": round(ext_macro.get("ftse_val", 0.0), 2),
+        "FTSE100_Veränderung": round(ext_macro.get("ftse_chg", 0.0), 2),
         "Nikkei_225": round(nikkei_val, 2) if nikkei_val else 0.0,
         "Nikkei_Veränderung": round(nikkei_chg, 2) if nikkei_chg else 0.0,
         "Hang_Seng": round(hsi_val, 2) if hsi_val else 0.0,
         "Hang_Seng_Veränderung": round(hsi_chg, 2) if hsi_chg else 0.0,
+        "Shanghai_Comp": round(ext_macro.get("sse_val", 0.0), 2),
+        "Shanghai_Veränderung": round(ext_macro.get("sse_chg", 0.0), 2),
         "EuroStoxx_50": round(eu_val, 2) if eu_val else 0.0,
         "EuroStoxx_Veränderung": round(eu_chg, 2) if eu_chg else 0.0,
         "Spot_ETF_NetFlow_MUSD": etf_flow,
@@ -954,10 +976,16 @@ def log_market_data(
         "DXY_Veränderung": round(ext_macro.get("dxy_chg", 0.0), 2),
         "EURUSD_Wert": round(ext_macro.get("eurusd_val", 0.0), 4),
         "EURUSD_Veränderung": round(ext_macro.get("eurusd_chg", 0.0), 2),
+        "USDJPY_Wert": round(ext_macro.get("usdjpy_val", 0.0), 2),
+        "USDJPY_Veränderung": round(ext_macro.get("usdjpy_chg", 0.0), 2),
         "Gold_Wert": round(ext_macro.get("gold_val", 0.0), 2),
         "Gold_Veränderung": round(ext_macro.get("gold_chg", 0.0), 2),
+        "Silber_Wert": round(ext_macro.get("silver_val", 0.0), 2),
+        "Silber_Veränderung": round(ext_macro.get("silver_chg", 0.0), 2),
         "Oil_Wert": round(ext_macro.get("oil_val", 0.0), 2),
         "Oil_Veränderung": round(ext_macro.get("oil_chg", 0.0), 2),
+        "Kupfer_Wert": round(ext_macro.get("copper_val", 0.0), 2),
+        "Kupfer_Veränderung": round(ext_macro.get("copper_chg", 0.0), 2),
         "VIX_Wert": round(vix_data.get("vix_val", 0.0), 2),
         "Nasdaq_Veränderung": round(vix_data.get("nasdaq_chg", 0.0), 2),
         "News_Sentiment_Score": news_score,
@@ -965,8 +993,8 @@ def log_market_data(
         "DeFi_TVL_MrdUSD": llama_data.get("global_tvl_b", 0.0),
         "BTC_Dominanz_Pct": btc_dom,
         "Datenquelle": (
-            "Alternative.me, Yahoo Finance (^TNX, ^GSPC, ^GDAXI, ^N225, ^HSI, ^STOXX50E,"
-            " DX-Y.NYB, EURUSD=X, GC=F, CL=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama, CoinGecko"
+            "Alternative.me, Yahoo Finance (^TNX, ^GSPC, ^GDAXI, ^DJI, ^FTSE, 000001.SS, ^N225, ^HSI, ^STOXX50E,"
+            " DX-Y.NYB, EURUSD=X, JPY=X, GC=F, SI=F, CL=F, HG=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama, CoinGecko"
         ),
         "Quellen_Hinzugefügt_Am": "2026-10-12",
     }
@@ -1374,7 +1402,7 @@ if current_data and len(current_data) > 0:
                     )
                     .properties(height=max(120, len(alloc_chart_data) * 35))
                 )
-                st.altair_chart(chart_alloc, width="stretch")
+                st.altair_chart(chart_alloc, use_container_width=True)
 
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
@@ -1498,7 +1526,7 @@ if current_data and len(current_data) > 0:
                         )
                         .properties(height=250)
                     )
-                    st.altair_chart(chart_scores, width="stretch")
+                    st.altair_chart(chart_scores, use_container_width=True)
 
                     if hist_price > 0:
                         st.markdown(
@@ -1571,7 +1599,7 @@ if current_data and len(current_data) > 0:
                         )
 
                         final_chart = (chart_layers + points).interactive()
-                        st.altair_chart(final_chart, width="stretch")
+                        st.altair_chart(final_chart, use_container_width=True)
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
@@ -1599,20 +1627,26 @@ with st.container(border=True):
 
         dxy_col = "green" if ext_macro.get("dxy_chg", 0) >= 0 else "red"
         eur_col = "green" if ext_macro.get("eurusd_chg", 0) >= 0 else "red"
+        jpy_col = "green" if ext_macro.get("usdjpy_chg", 0) >= 0 else "red"
         gold_col = "green" if ext_macro.get("gold_chg", 0) >= 0 else "red"
+        silver_col = "green" if ext_macro.get("silver_chg", 0) >= 0 else "red"
         oil_col = "green" if ext_macro.get("oil_chg", 0) >= 0 else "red"
+        copper_col = "green" if ext_macro.get("copper_chg", 0) >= 0 else "red"
         vix_col = "red" if vix_data.get("vix_chg", 0) >= 0 else "green"
         ndx_col = "green" if vix_data.get("nasdaq_chg", 0) >= 0 else "red"
 
         st.markdown(
             f'💵 <b>DXY:</b> {ext_macro.get("dxy_val", 0):.2f} (<span style="color:{dxy_col}; font-weight:bold;">{ext_macro.get("dxy_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'💶 <b>EUR/USD:</b> {ext_macro.get("eurusd_val", 0):.4f} (<span style="color:{eur_col}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>)',
+            f'💶 <b>EUR/USD:</b> {ext_macro.get("eurusd_val", 0):.4f} (<span style="color:{eur_col}; font-weight:bold;">{ext_macro.get("eurusd_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'💴 <b>USD/JPY:</b> {ext_macro.get("usdjpy_val", 0):.2f} (<span style="color:{jpy_col}; font-weight:bold;">{ext_macro.get("usdjpy_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
         st.markdown(
             f'🥇 <b>Gold:</b> {ext_macro.get("gold_val", 0):,.1f} $ (<span style="color:{gold_col}; font-weight:bold;">{ext_macro.get("gold_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
-            f'🛢 <b>Öl:</b> {ext_macro.get("oil_val", 0):,.1f} $ (<span style="color:{oil_col}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>)',
+            f'🥈 <b>Silber:</b> {ext_macro.get("silver_val", 0):,.2f} $ (<span style="color:{silver_col}; font-weight:bold;">{ext_macro.get("silver_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'🛢 <b>Öl:</b> {ext_macro.get("oil_val", 0):,.1f} $ (<span style="color:{oil_col}; font-weight:bold;">{ext_macro.get("oil_chg", 0):+.2f}%</span>) &nbsp;|&nbsp; '
+            f'🏗 <b>Kupfer:</b> {ext_macro.get("copper_val", 0):,.2f} $ (<span style="color:{copper_col}; font-weight:bold;">{ext_macro.get("copper_chg", 0):+.2f}%</span>)',
             unsafe_allow_html=True,
         )
 
@@ -1633,12 +1667,24 @@ with st.container(border=True):
         if stock_indices:
             sp500_v, sp500_c = stock_indices.get("SP500", {}).get("val", 0), stock_indices.get("SP500", {}).get("chg", 0)
             dax_v, dax_c = stock_indices.get("DAX", {}).get("val", 0), stock_indices.get("DAX", {}).get("chg", 0)
-            st.write(f"📈 **S&P 500:** {sp500_v:,.0f} ({sp500_c:+.2f}%) | **DAX:** {dax_v:,.0f} ({dax_c:+.2f}%)")
+            dow_v, dow_c = ext_macro.get("dow_val", 0), ext_macro.get("dow_chg", 0)
+            ftse_v, ftse_c = ext_macro.get("ftse_val", 0), ext_macro.get("ftse_chg", 0)
+            st.write(
+                f"📈 **S&P 500:** {sp500_v:,.0f} ({sp500_c:+.2f}%) | "
+                f"**Dow Jones:** {dow_v:,.0f} ({dow_c:+.2f}%) | "
+                f"**DAX:** {dax_v:,.0f} ({dax_c:+.2f}%) | "
+                f"**FTSE 100:** {ftse_v:,.0f} ({ftse_c:+.2f}%)"
+            )
 
         if asian_markets:
             n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
-            st.write(f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | **Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%)")
+            sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
+            st.write(
+                f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | "
+                f"**Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%) | "
+                f"**Shanghai Comp:** {sse_v:,.0f} ({sse_c:+.2f}%)"
+            )
 
         st.write("---")
         st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
@@ -1712,7 +1758,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     })
 
                 df_comp = pd.DataFrame(comparison_rows)
-                st.dataframe(df_comp, width="stretch", hide_index=True)
+                st.dataframe(df_comp, use_container_width=True, hide_index=True)
 
                 st.write("---")
                 st.markdown("##### 📈 Backtest-Vergleich")
@@ -1730,7 +1776,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         )
                         .properties(height=220)
                     )
-                    st.altair_chart(chart_bt.interactive(), width="stretch")
+                    st.altair_chart(chart_bt.interactive(), use_container_width=True)
 
                 if total_evaluated > 0:
                     hit_rate = (correct_hits / total_evaluated) * 100
@@ -1744,31 +1790,31 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 col_d1, col_d2, col_d3 = st.columns(3)
                 if os.path.exists(LOG_FILE):
                     with open(LOG_FILE, "rb") as f:
-                        col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", width="stretch")
+                        col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(MARKET_LOG_FILE):
                     with open(MARKET_LOG_FILE, "rb") as f:
-                        col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", width="stretch")
+                        col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(IMP_FILE):
                     with open(IMP_FILE, "rb") as f:
-                        col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", width="stretch")
+                        col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e:
             st.warning(f"Fehler: {e}")
 
-# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (KORRIGIERTE DARSTELLUNG)
+# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV (SICHERER DOMAIN-PUFFER)
 st.write("")
 with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
     if os.path.exists(MARKET_LOG_FILE):
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
-                # 1. Datum parsen
                 df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
                 df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
 
-                # 2. CHART-DATEN: Chronologisch aufsteigend (alt -> neu, links -> rechts)
                 df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
 
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
+                
+                # Zeile 1: Sentiment & VIX
                 col_mc1, col_mc2 = st.columns(2)
 
                 with col_mc1:
@@ -1789,7 +1835,7 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                             )
                             .properties(height=180)
                         )
-                        st.altair_chart(chart_fg_log, width="stretch")
+                        st.altair_chart(chart_fg_log, use_container_width=True)
                     else:
                         st.info("Keine Daten für Sentiment verfügbar.")
 
@@ -1803,6 +1849,9 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                     if not df_vix.empty:
                         min_vix = max(0, df_vix["VIX_Wert"].min() - 2)
                         max_vix = df_vix["VIX_Wert"].max() + 2
+                        if min_vix == max_vix:
+                            min_vix -= 1
+                            max_vix += 1
                         chart_vix_log = (
                             alt.Chart(df_vix)
                             .mark_line(point=True, color="#e74c3c", strokeWidth=2)
@@ -1816,14 +1865,77 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                             )
                             .properties(height=180)
                         )
-                        st.altair_chart(chart_vix_log, width="stretch")
+                        st.altair_chart(chart_vix_log, use_container_width=True)
                     else:
                         st.info("Noch nicht genügend VIX-Historie geloggt.")
+
+                # Zeile 2: US 10J Zins & Gold
+                col_mc3, col_mc4 = st.columns(2)
+
+                with col_mc3:
+                    st.markdown("###### 🏛 US 10J Anleihen-Zins (%)")
+                    if "US_10J_Rendite" in df_chart_data.columns:
+                        df_zins = df_chart_data[df_chart_data["US_10J_Rendite"].notnull() & (df_chart_data["US_10J_Rendite"] > 0)]
+                    else:
+                        df_zins = pd.DataFrame()
+
+                    if not df_zins.empty:
+                        min_z = max(0, df_zins["US_10J_Rendite"].min() - 0.2)
+                        max_z = df_zins["US_10J_Rendite"].max() + 0.2
+                        if min_z == max_z:
+                            min_z -= 0.1
+                            max_z += 0.1
+                        chart_zins_log = (
+                            alt.Chart(df_zins)
+                            .mark_line(point=True, color="#3498db", strokeWidth=2)
+                            .encode(
+                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                                y=alt.Y("US_10J_Rendite:Q", scale=alt.Scale(domain=[min_z, max_z]), title="Zins (%)"),
+                                tooltip=[
+                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                    alt.Tooltip("US_10J_Rendite:Q", title="Rendite", format=".2f%"),
+                                ],
+                            )
+                            .properties(height=180)
+                        )
+                        st.altair_chart(chart_zins_log, use_container_width=True)
+                    else:
+                        st.info("Noch nicht genügend Zins-Historie geloggt.")
+
+                with col_mc4:
+                    st.markdown("###### 🥇 Goldkurs ($ / Unze)")
+                    if "Gold_Wert" in df_chart_data.columns:
+                        df_gold = df_chart_data[df_chart_data["Gold_Wert"].notnull() & (df_chart_data["Gold_Wert"] > 0)]
+                    else:
+                        df_gold = pd.DataFrame()
+
+                    if not df_gold.empty:
+                        min_g = max(0, df_gold["Gold_Wert"].min() - 50)
+                        max_g = df_gold["Gold_Wert"].max() + 50
+                        if min_g == max_g:
+                            min_g -= 10
+                            max_g += 10
+                        chart_gold_log = (
+                            alt.Chart(df_gold)
+                            .mark_line(point=True, color="#f39c12", strokeWidth=2)
+                            .encode(
+                                x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
+                                y=alt.Y("Gold_Wert:Q", scale=alt.Scale(domain=[min_g, max_g]), title="Gold ($)"),
+                                tooltip=[
+                                    alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
+                                    alt.Tooltip("Gold_Wert:Q", title="Gold ($)", format=",.1f"),
+                                ],
+                            )
+                            .properties(height=180)
+                        )
+                        st.altair_chart(chart_gold_log, use_container_width=True)
+                    else:
+                        st.info("Noch nicht genügend Gold-Historie geloggt.")
 
                 st.write("---")
                 st.markdown("##### 📋 Vollständige Makro-Historie")
 
-                # 3. TABELLEN-DATEN: Absteigend (neueste Einträge zuerst)
+                # TABELLEN-DATEN
                 df_table_data = df_market_log.sort_values(by="ParsedDate", ascending=False)
 
                 display_cols = []
@@ -1835,8 +1947,12 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                     vix_w = row.get("VIX_Wert", None)
                     news_s = row.get("News_Sentiment_Score", None)
                     gold_w = row.get("Gold_Wert", None)
+                    silver_w = row.get("Silber_Wert", None)
+                    copper_w = row.get("Kupfer_Wert", None)
                     tvl_w = row.get("DeFi_TVL_MrdUSD", None)
                     btc_d = row.get("BTC_Dominanz_Pct", None)
+                    dow_w = row.get("DowJones_Wert", None)
+                    ftse_w = row.get("FTSE100_Wert", None)
 
                     display_cols.append({
                         "Datum": d_clean,
@@ -1846,12 +1962,16 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                         "VIX (Panik)": f"{vix_w:.1f}" if pd.notnull(vix_w) and vix_w > 0 else "-",
                         "News Score": f"{int(news_s):+d}" if pd.notnull(news_s) else "-",
                         "Gold ($)": f"{gold_w:,.1f}" if pd.notnull(gold_w) and gold_w > 0 else "-",
+                        "Silber ($)": f"{silver_w:,.2f}" if pd.notnull(silver_w) and silver_w > 0 else "-",
+                        "Kupfer ($)": f"{copper_w:,.2f}" if pd.notnull(copper_w) and copper_w > 0 else "-",
+                        "Dow Jones": f"{dow_w:,.0f}" if pd.notnull(dow_w) and dow_w > 0 else "-",
+                        "FTSE 100": f"{ftse_w:,.0f}" if pd.notnull(ftse_w) and ftse_w > 0 else "-",
                         "DeFi TVL": f"{tvl_w:.1f}B $" if pd.notnull(tvl_w) and tvl_w > 0 else "-",
                         "BTC Dom.": f"{btc_d:.1f}%" if pd.notnull(btc_d) and btc_d > 0 else "-",
                     })
 
                 df_macro_table = pd.DataFrame(display_cols)
-                st.dataframe(df_macro_table, width="stretch", hide_index=True)
+                st.dataframe(df_macro_table, use_container_width=True, hide_index=True)
         except Exception as e:
             st.warning(f"Fehler beim Laden des Makro-Archivs: {e}")
 
