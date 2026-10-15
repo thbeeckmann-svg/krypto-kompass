@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime, timedelta
 import os
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 import altair as alt
 import numpy as np
@@ -108,12 +109,20 @@ IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
 
 
-# --- AUTOMATISCHER GITHUB CLOUD-SPEICHER ---
-def save_and_commit_csv(file_path, df):
-    # 1. Lokal im aktuellen Container speichern
+# --- AUTOMATISCHER GITHUB CLOUD-SPEICHER MIT DROSSELUNG & TOAST-FEEDBACK ---
+def save_and_commit_csv(file_path, df, force_commit=False):
+    # 1. Immer lokal im aktuellen Container speichern
     df.to_csv(file_path, index=False)
     
-    # 2. Automatisch per API im GitHub Repository speichern
+    # 2. Prüfen, ob in den letzten 30 Minuten bereits ein GitHub-Commit für diese Datei stattfand
+    last_commit_key = f"last_commit_{file_path}"
+    now = datetime.now(BERLIN_TZ)
+    
+    if not force_commit and last_commit_key in st.session_state:
+        time_diff = (now - st.session_state[last_commit_key]).total_seconds()
+        if time_diff < 1800:  # Erst nach 30 Min. (1800 Sek.) erneut an GitHub senden
+            return
+
     github_token = st.secrets.get("GITHUB_TOKEN")
     repo = st.secrets.get("GITHUB_REPO")
     
@@ -124,7 +133,7 @@ def save_and_commit_csv(file_path, df):
                 "Authorization": f"token {github_token}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            # SHA der existierenden Datei abfragen (erforderlich für GitHub-Update)
+            # SHA der existierenden Datei abfragen
             res = requests.get(url, headers=headers, timeout=5)
             sha = res.json().get("sha") if res.status_code == 200 else None
             
@@ -138,7 +147,10 @@ def save_and_commit_csv(file_path, df):
             if sha:
                 payload["sha"] = sha
                 
-            requests.put(url, headers=headers, json=payload, timeout=5)
+            put_res = requests.put(url, headers=headers, json=payload, timeout=5)
+            if put_res.status_code in [200, 201]:
+                st.session_state[last_commit_key] = now
+                st.toast(f"☁️ {file_path} erfolgreich auf GitHub gesichert!", icon="✅")
         except Exception:
             pass
 
@@ -282,48 +294,96 @@ def get_vix_and_nasdaq():
     return data
 
 
-# 5. CRYPTOCOMPARE ECHTZEIT-NACHRICHTEN & ZINS-SENTIMENT
+# 5. MULTI-SOURCE NACHRICHTEN & SENTIMENT-ANALYSE (CryptoCompare, CoinTelegraph, CoinDesk, CoinGecko)
 @st.cache_data(ttl=300)
 def get_news_sentiment_score():
-    url = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headlines = []
+    sentiment_points = 0
+    
     bullish_keywords = [
         "rate cut", "fed cuts", "ecb cuts", "approval", "bullish", "inflow",
         "adoption", "stimulus", "easing", "rate cuts", "lower rates", "dovish",
-        "fed rate cut", "soft landing", "gdp growth"
+        "fed rate cut", "soft landing", "gdp growth", "rally", "gain", "soar",
+        "breakout", "record high", "etf approval", "surge"
     ]
     bearish_keywords = [
         "rate hike", "inflation high", "recession", "sec lawsuit", "ban",
         "crackdown", "outflow", "dump", "tariff", "rate hikes", "higher rates",
-        "hawkish", "fed rate hike", "stagflation", "cpi surge"
+        "hawkish", "fed rate hike", "stagflation", "cpi surge", "drop", "plunge",
+        "hack", "exploit", "crash", "liquidation"
     ]
-    
-    sentiment_points = 0
-    headlines = []
 
+    # Q1: CryptoCompare API
     try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            res_json = response.json()
-            articles = res_json.get("Data", [])[:15] if isinstance(res_json, dict) else []
-            for art in articles:
-                title = art.get("title", "")
-                body = art.get("body", "")
-                text = f"{title} {body}".lower()
-
-                if title:
-                    headlines.append(title)
-
-                for word in bullish_keywords:
-                    if word in text:
-                        sentiment_points += 15
-                for word in bearish_keywords:
-                    if word in text:
-                        sentiment_points -= 15
-
-        score = max(-100, min(100, sentiment_points))
-        return score, headlines[:5]
+        url_cc = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
+        res_cc = requests.get(url_cc, headers=headers, timeout=4)
+        if res_cc.status_code == 200:
+            data_cc = res_cc.json()
+            if isinstance(data_cc, dict) and data_cc.get("Response") == "Success":
+                for art in data_cc.get("Data", [])[:10]:
+                    t = art.get("title", "").strip()
+                    if t and t not in headlines:
+                        headlines.append(t)
     except Exception:
-        return 0, []
+        pass
+
+    # Q2: CoinTelegraph RSS
+    try:
+        res_ct = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
+        if res_ct.status_code == 200:
+            root = ET.fromstring(res_ct.text)
+            for item in root.findall(".//item")[:10]:
+                t = item.find("title")
+                if t is not None and t.text:
+                    t_text = t.text.strip()
+                    if t_text and t_text not in headlines:
+                        headlines.append(t_text)
+    except Exception:
+        pass
+
+    # Q3: CoinDesk RSS
+    try:
+        res_cd = requests.get("https://www.coindesk.com/arc/outboundfeeds/rss/", headers=headers, timeout=4)
+        if res_cd.status_code == 200:
+            root = ET.fromstring(res_cd.text)
+            for item in root.findall(".//item")[:10]:
+                t = item.find("title")
+                if t is not None and t.text:
+                    t_text = t.text.strip()
+                    if t_text and t_text not in headlines:
+                        headlines.append(t_text)
+    except Exception:
+        pass
+
+    # Q4: CoinGecko API
+    try:
+        res_cg = requests.get("https://api.coingecko.com/api/v3/news", headers=headers, timeout=4)
+        if res_cg.status_code == 200:
+            data_cg = res_cg.json().get("data", [])
+            for item in data_cg[:10]:
+                t = item.get("title", "").strip()
+                if t and t not in headlines:
+                    headlines.append(t)
+    except Exception:
+        pass
+
+    # Auswertung aller gesammelten Schlagzeilen
+    for h in headlines:
+        text_lower = h.lower()
+        for word in bullish_keywords:
+            if word in text_lower:
+                sentiment_points += 15
+        for word in bearish_keywords:
+            if word in text_lower:
+                sentiment_points -= 15
+
+    score = max(-100, min(100, sentiment_points))
+    
+    if not headlines:
+        return 0, ["⚠️ Nachrichten-Stream temporär nicht erreichbar"]
+
+    return score, headlines[:5]
 
 
 # 6. STABLECOIN LIQUIDITÄT & DEFI TVL (DEFILLAMA API)
@@ -372,7 +432,7 @@ def get_btc_dominance():
     return 56.5
 
 
-# 8. Makro-Daten & Leitmärkte
+# 8. Makro-Daten & Leitmärkte (OPTIMIERTE BATCH-ABRUFE FÜR SCHNELLE LADEZEIT)
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -415,18 +475,34 @@ def get_extended_macro_data():
         "sse": "000001.SS",
     }
 
-    for key, sym in tickers_map.items():
-        try:
-            t = yf.Ticker(sym)
-            h = t.history(period="5d")
-            if not h.empty and len(h) >= 1:
-                val = float(h["Close"].iloc[-1])
-                prev = float(h["Close"].iloc[0])
-                chg = ((val - prev) / prev) * 100 if prev > 0 else 0.0
-                data[f"{key}_val"] = val
-                data[f"{key}_chg"] = chg
-        except Exception:
-            continue
+    try:
+        symbols = list(tickers_map.values())
+        batch_df = yf.download(symbols, period="5d", interval="1d", progress=False)
+        
+        if not batch_df.empty and "Close" in batch_df:
+            close_df = batch_df["Close"]
+            for key, sym in tickers_map.items():
+                if sym in close_df.columns:
+                    series = close_df[sym].dropna()
+                    if len(series) >= 1:
+                        val = float(series.iloc[-1])
+                        prev = float(series.iloc[0]) if len(series) > 1 else val
+                        chg = ((val - prev) / prev) * 100 if prev > 0 else 0.0
+                        data[f"{key}_val"] = val
+                        data[f"{key}_chg"] = chg
+    except Exception:
+        for key, sym in tickers_map.items():
+            try:
+                t = yf.Ticker(sym)
+                h = t.history(period="5d")
+                if not h.empty and len(h) >= 1:
+                    val = float(h["Close"].iloc[-1])
+                    prev = float(h["Close"].iloc[0])
+                    chg = ((val - prev) / prev) * 100 if prev > 0 else 0.0
+                    data[f"{key}_val"] = val
+                    data[f"{key}_chg"] = chg
+            except Exception:
+                continue
 
     return data
 
@@ -1067,7 +1143,6 @@ def log_prediction(coin, price, signal_text, fg_val):
 
             mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
             if mask.any():
-                # WICHTIG: Kurs_Damals NICHT überschreiben, um den Tages-Startwert zu fixieren!
                 df_log.loc[mask, "Datum"] = today_str
                 df_log.loc[mask, "Signal"] = signal_text.split()[0]
                 df_log.loc[mask, "FearGreed"] = fg_val
@@ -1197,7 +1272,7 @@ local_learning_report, dynamic_weights = generate_local_self_learning_optimizati
     df_archive_check, df_market_check, current_data
 )
 
-# EINSTELLUNGEN & INVESTITIONS-PLANUNG (OBENES MENÜ)
+# EINSTELLUNGEN & INVESTITIONS-PLANUNG
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     
@@ -1713,7 +1788,7 @@ with st.container(border=True):
         st.write("---")
         st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
         if top_headlines:
-            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (CryptoCompare):")
+            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (Multi-Source Feeds):")
             for h in top_headlines:
                 st.markdown(f"- *{h}*")
 
@@ -1735,7 +1810,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 # 1. Datum parsen
                 df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
                 
-                # 2. Sortierung: Neueste Einträge für die Tabellendarstellung nach oben
+                # 2. Sortierung
                 df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
 
                 # Coin-Filter
@@ -1768,7 +1843,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         "Buy & Hold": round(sim_depot_hold, 2),
                     })
 
-                    # Korrigierte Auswertungs-Logik (inkl. GEWINNE)
                     evaluation = "Neutral 🟡"
                     if "KAUF" in signal_damals:
                         total_evaluated += 1
@@ -1797,7 +1871,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
 
                 df_comp = pd.DataFrame(comparison_rows)
 
-                # Tabellen-Styling mit farbiger Diff-Spalte
                 st.dataframe(
                     df_comp,
                     column_config={
@@ -1857,11 +1930,9 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
         try:
             df_market_log = pd.read_csv(MARKET_LOG_FILE)
             if not df_market_log.empty:
-                # 1. Datum parsen
                 df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
                 df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
 
-                # 2. String-Bereinigung & Robuste numerische Konvertierung für ALLE Makro-Spalten
                 num_cols = [
                     "FearGreed_Wert", "US_10J_Rendite", "VIX_Wert", "Gold_Wert", 
                     "Silber_Wert", "Kupfer_Wert", "Spot_ETF_NetFlow_MUSD", 
@@ -1881,7 +1952,9 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                             )
                         df_market_log[col] = pd.to_numeric(df_market_log[col], errors="coerce")
 
-                # 3. Chart-Daten chronologisch sortieren (alt -> neu)
+                # FEHLENDE HISTORISCHE WERTE MIT FORWARD/BACKWARD FILL SAUBER ERGÄNZEN
+                df_market_log[num_cols] = df_market_log[num_cols].ffill().bfill()
+
                 df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
 
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
@@ -1982,7 +2055,6 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                 st.write("---")
                 st.markdown("##### 📋 Vollständige Makro-Historie")
 
-                # TABELLEN-DATEN: Neueste Einträge zuerst
                 df_table_data = df_market_log.sort_values(by="ParsedDate", ascending=False)
 
                 display_cols = []
