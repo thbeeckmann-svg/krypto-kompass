@@ -118,7 +118,7 @@ def save_and_commit_csv(file_path, df, force_commit=False):
     
     if not force_commit and last_commit_key in st.session_state:
         time_diff = (now - st.session_state[last_commit_key]).total_seconds()
-        if time_diff < 1800:  # Erst nach 30 Min. erneut committen
+        if time_diff < 1800:
             return
 
     github_token = st.secrets.get("GITHUB_TOKEN")
@@ -291,82 +291,51 @@ def get_vix_and_nasdaq():
     return data
 
 
-# 5. MULTI-SOURCE NACHRICHTEN & MAKRO-SENTIMENT (ROBUST MIT JSON- & RSS-FALLBACK)
-@st.cache_data(ttl=300)
+# 5. ULTRA-ROBUSTE NEWS- & SENTIMENT-FUNKTION (MIT KURZEM TTL CACHE)
+@st.cache_data(ttl=10)
 def get_news_sentiment_score():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,json;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     headlines = []
     sentiment_points = 0
-    
-    bullish_keywords = [
-        "rate cut", "fed cuts", "ecb cuts", "approval", "bullish", "inflow",
-        "adoption", "stimulus", "easing", "rate cuts", "lower rates", "dovish",
-        "fed rate cut", "soft landing", "gdp growth", "rally", "gain", "soar",
-        "breakout", "record high", "etf approval", "surge", "wall street gain"
-    ]
-    bearish_keywords = [
-        "rate hike", "inflation high", "recession", "sec lawsuit", "ban",
-        "crackdown", "outflow", "dump", "tariff", "rate hikes", "higher rates",
-        "hawkish", "fed rate hike", "stagflation", "cpi surge", "drop", "plunge",
-        "hack", "exploit", "crash", "liquidation", "wall street fall"
-    ]
+    errors = []
 
     try:
-        url_cc = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
-        res_cc = requests.get(url_cc, headers=headers, timeout=4)
-        if res_cc.status_code == 200:
-            data_cc = res_cc.json()
-            if isinstance(data_cc, dict) and data_cc.get("Response") == "Success":
-                for art in data_cc.get("Data", [])[:8]:
-                    t = art.get("title", "").strip()
-                    if t and t not in headlines:
-                        headlines.append(t)
-    except Exception:
-        pass
-
-    try:
-        gn_url = "https://news.google.com/rss/search?q=bitcoin+OR+crypto+OR+fed+rate&hl=en-US&gl=US&ceid=US:en"
-        res_gn = requests.get(gn_url, headers=headers, timeout=4)
-        if res_gn.status_code == 200 and "<rss" in res_gn.text.lower():
-            root = ET.fromstring(res_gn.text)
-            for item in root.findall(".//item")[:6]:
-                t = item.find("title")
-                if t is not None and t.text:
-                    t_clean = t.text.split(" - ")[0].strip()
-                    if t_clean and t_clean not in headlines:
-                        headlines.append(t_clean)
-    except Exception:
-        pass
-
-    try:
-        res_cg = requests.get("https://api.coingecko.com/api/v3/news", headers=headers, timeout=4)
-        if res_cg.status_code == 200:
-            data_cg = res_cg.json().get("data", [])
-            for item in data_cg[:6]:
-                t = item.get("title", "").strip()
-                if t and t not in headlines:
+        res = requests.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN", headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json().get("Data", [])
+            for art in data[:5]:
+                t = art.get("title", "")
+                if t:
                     headlines.append(t)
-    except Exception:
-        pass
+        else:
+            errors.append(f"CryptoCompare HTTP {res.status_code}")
+    except Exception as e:
+        errors.append(f"CryptoCompare Fehler: {str(e)[:30]}")
+
+    if not headlines:
+        try:
+            res_cg = requests.get("https://api.coingecko.com/api/v3/search/trending", headers=headers, timeout=5)
+            if res_cg.status_code == 200:
+                coins = res_cg.json().get("coins", [])
+                for c in coins[:5]:
+                    item = c.get("item", {})
+                    headlines.append(f"Trending Asset: {item.get('name', '')} ({item.get('symbol', '')})")
+        except Exception as e:
+            errors.append(f"CoinGecko Fehler: {str(e)[:30]}")
+
+    if not headlines:
+        return 0, [f"⚠️ Feed-Info: {', '.join(errors)}"]
 
     for h in headlines:
-        text_lower = h.lower()
-        for word in bullish_keywords:
-            if word in text_lower:
-                sentiment_points += 15
-        for word in bearish_keywords:
-            if word in text_lower:
-                sentiment_points -= 15
+        t_low = h.lower()
+        if any(w in t_low for w in ["bull", "cut", "rally", "gain", "up", "high", "surge", "approval"]):
+            sentiment_points += 15
+        if any(w in t_low for w in ["bear", "hike", "drop", "fall", "down", "low", "crash", "ban"]):
+            sentiment_points -= 15
 
-    score = max(-100, min(100, sentiment_points))
-    
-    if not headlines:
-        return 0, ["⚠️ Nachrichten-Feeds temporär eingeschränkt (Rate-Limit)"]
-
-    return score, headlines[:5]
+    return max(-100, min(100, sentiment_points)), headlines[:5]
 
 
 # 6. STABLECOIN LIQUIDITÄT & DEFI TVL
@@ -682,7 +651,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     return 0.0001
 
 
-# --- AUTONOMES SELBSTLERN-SYSTEM (DYNAMISCHE KORRELATIONS-GEWICHTUNG) ---
+# --- AUTONOMES SELBSTLERN-SYSTEM ---
 def generate_local_self_learning_optimizations(df_archive, df_market, current_data):
     default_weights = {
         "Trend & Momentum": 15.0,
@@ -724,27 +693,20 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
     weights = default_weights.copy()
     optimizations = []
 
-    # Dynamische Anpassung basierend auf Fehlerraten
     if buy_signals > 0 and (failed_buys / buy_signals) > 0.3:
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
         weights["Nachrichten & Zins-Sentiment"] += 1.0
-        optimizations.append(
-            "⚠️ **Anpassung Kauf-Signale:** Makro-, Zins- und News-Einfluss gestärkt."
-        )
+        optimizations.append("⚠️ **Anpassung Kauf-Signale:** Makro-, Zins- und News-Einfluss gestärkt.")
 
     if sell_signals > 0 and (failed_sells / sell_signals) > 0.3:
         weights["Funding Rates & Derivate"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
-        optimizations.append(
-            "⚠️ **Anpassung Verkauf-Signale:** Derivate-Raten & RSI höher gewichtet."
-        )
+        optimizations.append("⚠️ **Anpassung Verkauf-Signale:** Derivate-Raten & RSI höher gewichtet.")
 
     if not optimizations:
-        optimizations.append(
-            "✅ **System-Status Optimal:** Multi-Faktoren-Gewichtungen aktiv."
-        )
+        optimizations.append("✅ **System-Status Optimal:** Multi-Faktoren-Gewichtungen aktiv.")
 
     report = (
         f"""
@@ -1207,34 +1169,19 @@ def generate_signal(
         t_sf, t_mf, t_ms, t_ss = -32.0, -11.0, 13.0, 32.0
     elif zeitraum == "6 Monate":
         t_sf, t_mf, t_ms, t_ss = -45.0, -15.0, 18.0, 45.0
-    else:  # 1 Jahr
+    else:
         t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
 
     if perf_val <= t_sf and macro_score >= 0:
-        return (
-            "STARKE KAUFCHANCE 🟢🟢",
-            f"Deutlicher Kursrücksetzer ({zeitraum}: {perf_val:.1f}%).",
-        )
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Deutlicher Kursrücksetzer ({zeitraum}: {perf_val:.1f}%).")
     elif perf_val <= t_mf:
-        return (
-            "KAUFEN 🟢",
-            f"Moderat nachgebend im Zeitraum {zeitraum} ({perf_val:.1f}%).",
-        )
+        return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({perf_val:.1f}%).")
     elif perf_val >= t_ss and (fg_value >= 75 or macro_score < 0):
-        return (
-            "GEWINNE SICHERN 🔴🔴",
-            f"Starker Preissprung ({zeitraum}: +{perf_val:.1f}%).",
-        )
+        return ("GEWINNE SICHERN 🔴🔴", f"Starker Preissprung ({zeitraum}: +{perf_val:.1f}%).")
     elif perf_val >= t_ms:
-        return (
-            "VORSICHT / TEILVERKAUF 🔴",
-            f"Solider Zuwachs ({zeitraum}: +{perf_val:.1f}%).",
-        )
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: +{perf_val:.1f}%).")
     else:
-        return (
-            "HALTEN 🟡",
-            f"Seitwärtsphase im Zeitraum {zeitraum} ({perf_val:+.1f}%).",
-        )
+        return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({perf_val:+.1f}%).")
 
 
 # LIVE-DATEN ABRUFEN
@@ -1295,7 +1242,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
     manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert KI-Automatik)", value=False)
     
     if manuelle_gewichtung:
-        st.caption("Verstelle die Slider, um die Einflüsse im Decision Engine Score manuell zu gewichten.")
         col_w1, col_w2, col_w3, col_w4 = st.columns(4)
         w_trend = col_w1.slider("Trend & Momentum (%)", 0, 50, 15)
         w_etf = col_w2.slider("ETF Net Flows (%)", 0, 50, 15)
@@ -1336,7 +1282,7 @@ elif zeitraum_wahl == "90 Tage":
     limit_anzahl, interval, wöchentlich = 90, "1d", True
 elif zeitraum_wahl == "6 Monate":
     limit_anzahl, interval, wöchentlich = 180, "1d", True
-else:  # 1 Jahr
+else:
     limit_anzahl, interval, wöchentlich = 365, "1d", True
 
 nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
@@ -1626,7 +1572,6 @@ if current_data and len(current_data) > 0:
                             unsafe_allow_html=True,
                         )
 
-                    # CHARTING
                     if df_history is not None and not df_history.empty:
                         df_chart = df_history.reset_index().copy()
 
@@ -1774,14 +1719,14 @@ with st.container(border=True):
         st.write("---")
         st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
         if top_headlines:
-            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (Google News, CryptoCompare & CoinGecko):")
+            st.caption("Aktuelle Schlagzeilen:")
             for h in top_headlines:
                 st.markdown(f"- *{h}*")
 
-# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM, BACKTEST & CSV-EXPORT
+# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM
 st.write("")
 with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
-    st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage** im Vergleich zu Buy-and-Hold.")
+    st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage**.")
 
     if os.path.exists(LOG_FILE):
         try:
@@ -1857,9 +1802,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
 
                 st.dataframe(
                     df_comp,
-                    column_config={
-                        "Diff (%)": st.column_config.NumberColumn("Diff", format="%+.2f %%"),
-                    },
+                    column_config={"Diff (%)": st.column_config.NumberColumn("Diff", format="%+.2f %%")},
                     use_container_width=True,
                     hide_index=True,
                 )
@@ -1903,171 +1846,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e:
             st.warning(f"Fehler: {e}")
-
-# EXPANDER: HISTORISCHES MAKRO- & STIMMUNGSDATEN-ARCHIV
-st.write("")
-with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expanded=False):
-    if os.path.exists(MARKET_LOG_FILE):
-        try:
-            df_market_log = pd.read_csv(MARKET_LOG_FILE)
-            if not df_market_log.empty:
-                df_market_log["ParsedDate"] = pd.to_datetime(df_market_log["Datum"], errors="coerce")
-                df_market_log["Datum_Clean"] = df_market_log["ParsedDate"].dt.strftime("%d.%m.%Y %H:%M")
-
-                num_cols = [
-                    "FearGreed_Wert", "US_10J_Rendite", "VIX_Wert", "Gold_Wert", 
-                    "Silber_Wert", "Kupfer_Wert", "Spot_ETF_NetFlow_MUSD", 
-                    "News_Sentiment_Score", "DeFi_TVL_MrdUSD", "BTC_Dominanz_Pct",
-                    "DowJones_Wert", "FTSE100_Wert"
-                ]
-                for col in num_cols:
-                    if col in df_market_log.columns:
-                        if df_market_log[col].dtype == object:
-                            df_market_log[col] = (
-                                df_market_log[col]
-                                .astype(str)
-                                .str.replace("%", "", regex=False)
-                                .str.replace("$", "", regex=False)
-                                .str.replace(",", "", regex=False)
-                                .str.strip()
-                            )
-                        df_market_log[col] = pd.to_numeric(df_market_log[col], errors="coerce")
-
-                df_market_log[num_cols] = df_market_log[num_cols].ffill().bfill()
-                df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
-
-                st.markdown("##### 📈 Historische Trend-Entwicklung")
-                
-                col_mc1, col_mc2 = st.columns(2)
-
-                with col_mc1:
-                    st.markdown("###### 📊 Sentiment-Verlauf (Fear & Greed)")
-                    df_fg = df_chart_data[df_chart_data["FearGreed_Wert"].notnull() & (df_chart_data["FearGreed_Wert"] > 0)].copy()
-                    if not df_fg.empty:
-                        base = alt.Chart(df_fg).encode(
-                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                            y=alt.Y("FearGreed_Wert:Q", scale=alt.Scale(domain=[0, 100]), title=None),
-                            tooltip=[
-                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                alt.Tooltip("FearGreed_Wert:Q", title="Wert"),
-                                alt.Tooltip("FearGreed_Stimmung:N", title="Stimmung"),
-                            ],
-                        )
-                        chart_fg_log = (base.mark_line(color="#f1c40f", strokeWidth=2) + base.mark_point(color="#f1c40f", size=30)).properties(height=180)
-                        st.altair_chart(chart_fg_log, use_container_width=True)
-                    else:
-                        st.info("Keine Daten für Sentiment verfügbar.")
-
-                with col_mc2:
-                    st.markdown("###### 📉 Marktpanik (VIX Index)")
-                    df_vix = df_chart_data[df_chart_data["VIX_Wert"].notnull() & (df_chart_data["VIX_Wert"] > 0)].copy()
-
-                    if not df_vix.empty:
-                        min_vix = max(0, df_vix["VIX_Wert"].min() - 2)
-                        max_vix = df_vix["VIX_Wert"].max() + 2
-                        if min_vix == max_vix:
-                            min_vix, max_vix = min_vix - 1, max_vix + 1
-                        
-                        base_vix = alt.Chart(df_vix).encode(
-                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                            y=alt.Y("VIX_Wert:Q", scale=alt.Scale(domain=[min_vix, max_vix]), title=None),
-                            tooltip=[
-                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                alt.Tooltip("VIX_Wert:Q", title="VIX Index"),
-                            ],
-                        )
-                        chart_vix_log = (base_vix.mark_line(color="#e74c3c", strokeWidth=2) + base_vix.mark_point(color="#e74c3c", size=40)).properties(height=180)
-                        st.altair_chart(chart_vix_log, use_container_width=True)
-                    else:
-                        st.info("Noch keine VIX-Historie vorhanden.")
-
-                col_mc3, col_mc4 = st.columns(2)
-
-                with col_mc3:
-                    st.markdown("###### 🏛 US 10J Anleihen-Zins (%)")
-                    df_zins = df_chart_data[df_chart_data["US_10J_Rendite"].notnull() & (df_chart_data["US_10J_Rendite"] > 0)].copy()
-
-                    if not df_zins.empty:
-                        min_z = max(0, df_zins["US_10J_Rendite"].min() - 0.15)
-                        max_z = df_zins["US_10J_Rendite"].max() + 0.15
-                        if min_z == max_z:
-                            min_z, max_z = min_z - 0.1, max_z + 0.1
-
-                        base_zins = alt.Chart(df_zins).encode(
-                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                            y=alt.Y("US_10J_Rendite:Q", scale=alt.Scale(domain=[min_z, max_z]), title=None),
-                            tooltip=[
-                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                alt.Tooltip("US_10J_Rendite:Q", title="Zins (%)", format=".2f"),
-                            ],
-                        )
-                        chart_zins_log = (base_zins.mark_line(color="#3498db", strokeWidth=2) + base_zins.mark_point(color="#3498db", size=30)).properties(height=180)
-                        st.altair_chart(chart_zins_log, use_container_width=True)
-                    else:
-                        st.info("Keine Zins-Historie geloggt.")
-
-                with col_mc4:
-                    st.markdown("###### 🥇 Goldkurs ($ / Unze)")
-                    df_gold = df_chart_data[df_chart_data["Gold_Wert"].notnull() & (df_chart_data["Gold_Wert"] > 0)].copy()
-
-                    if not df_gold.empty:
-                        min_g = max(0, df_gold["Gold_Wert"].min() - 30)
-                        max_g = df_gold["Gold_Wert"].max() + 30
-                        if min_g == max_g:
-                            min_g, max_g = min_g - 10, max_g + 10
-
-                        base_gold = alt.Chart(df_gold).encode(
-                            x=alt.X("ParsedDate:T", title=None, axis=alt.Axis(format="%d.%m.", labelAngle=0)),
-                            y=alt.Y("Gold_Wert:Q", scale=alt.Scale(domain=[min_g, max_g]), title=None),
-                            tooltip=[
-                                alt.Tooltip("Datum_Clean:N", title="Zeitpunkt"),
-                                alt.Tooltip("Gold_Wert:Q", title="Gold ($)", format=",.1f"),
-                            ],
-                        )
-                        chart_gold_log = (base_gold.mark_line(color="#f39c12", strokeWidth=2) + base_gold.mark_point(color="#f39c12", size=30)).properties(height=180)
-                        st.altair_chart(chart_gold_log, use_container_width=True)
-                    else:
-                        st.info("Keine Gold-Historie geloggt.")
-
-                st.write("---")
-                st.markdown("##### 📋 Vollständige Makro-Historie")
-
-                df_table_data = df_market_log.sort_values(by="ParsedDate", ascending=False)
-
-                display_cols = []
-                for idx, row in df_table_data.iterrows():
-                    d_clean = row.get("Datum_Clean", "-")
-                    fg_w = row.get("FearGreed_Wert", None)
-                    us_y = row.get("US_10J_Rendite", None)
-                    etf_fl = row.get("Spot_ETF_NetFlow_MUSD", None)
-                    vix_w = row.get("VIX_Wert", None)
-                    news_s = row.get("News_Sentiment_Score", None)
-                    gold_w = row.get("Gold_Wert", None)
-                    silver_w = row.get("Silber_Wert", None)
-                    copper_w = row.get("Kupfer_Wert", None)
-                    tvl_w = row.get("DeFi_TVL_MrdUSD", None)
-                    btc_d = row.get("BTC_Dominanz_Pct", None)
-                    dow_w = row.get("DowJones_Wert", None)
-
-                    display_cols.append({
-                        "Datum": d_clean,
-                        "Fear & Greed": f"{int(fg_w)} / 100" if pd.notnull(fg_w) and fg_w > 0 else "-",
-                        "US 10J Zins": f"{us_y:.2f}%" if pd.notnull(us_y) and us_y > 0 else "-",
-                        "Spot-ETF Flow": f"{etf_fl:+.1f}M $" if pd.notnull(etf_fl) else "-",
-                        "VIX (Panik)": f"{vix_w:.1f}" if pd.notnull(vix_w) and vix_w > 0 else "-",
-                        "News Score": f"{int(news_s):+d}" if pd.notnull(news_s) else "-",
-                        "Gold ($)": f"{gold_w:,.1f}" if pd.notnull(gold_w) and gold_w > 0 else "-",
-                        "Silber ($)": f"{silver_w:,.2f}" if pd.notnull(silver_w) and silver_w > 0 else "-",
-                        "Kupfer ($)": f"{copper_w:,.2f}" if pd.notnull(copper_w) and copper_w > 0 else "-",
-                        "Dow Jones": f"{dow_w:,.0f}" if pd.notnull(dow_w) and dow_w > 0 else "-",
-                        "DeFi TVL": f"{tvl_w:.1f}B $" if pd.notnull(tvl_w) and tvl_w > 0 else "-",
-                        "BTC Dom.": f"{btc_d:.1f}%" if pd.notnull(btc_d) and btc_d > 0 else "-",
-                    })
-
-                df_macro_table = pd.DataFrame(display_cols)
-                st.dataframe(df_macro_table, use_container_width=True, hide_index=True)
-        except Exception as e:
-            st.warning(f"Fehler beim Laden des Makro-Archivs: {e}")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
