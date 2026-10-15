@@ -108,7 +108,6 @@ LOG_FILE = "prediction_log.csv"
 IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
 
-
 # --- AUTOMATISCHER GITHUB CLOUD-SPEICHER MIT DROSSELUNG & TOAST-FEEDBACK ---
 def save_and_commit_csv(file_path, df, force_commit=False):
     df.to_csv(file_path, index=False)
@@ -151,7 +150,6 @@ def save_and_commit_csv(file_path, df, force_commit=False):
         except Exception:
             pass
 
-
 def clean_old_logs(file_path, days_limit=365):
     if os.path.exists(file_path):
         try:
@@ -165,10 +163,8 @@ def clean_old_logs(file_path, days_limit=365):
         except Exception:
             pass
 
-
 clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
-
 
 # 1. BATCH-ABRUF DER BINANCE-DATEN (MIT YAHOO-FALLBACK)
 @st.cache_data(ttl=10)
@@ -216,7 +212,6 @@ def get_current_data():
 
     return data if data else None
 
-
 # 2. Spot-ETF Net Flows
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
@@ -245,7 +240,6 @@ def get_real_spot_etf_flows():
 
     return 0.0
 
-
 # 3. Fear & Greed Index
 @st.cache_data(ttl=60)
 def get_fear_and_greed():
@@ -260,7 +254,6 @@ def get_fear_and_greed():
     except Exception:
         pass
     return 50, "Neutral"
-
 
 # 4. VOLATILITÄTSINDEX (VIX) & NASDAQ 100
 @st.cache_data(ttl=60)
@@ -289,7 +282,6 @@ def get_vix_and_nasdaq():
         pass
 
     return data
-
 
 # 5. ULTRA-ROBUSTE NEWS- & SENTIMENT-FUNKTION (GARANTIERTER FALLBACK)
 @st.cache_data(ttl=10)
@@ -342,7 +334,6 @@ def get_news_sentiment_score():
 
     return max(-100, min(100, sentiment_points)), headlines[:5]
 
-
 # 6. STABLECOIN LIQUIDITÄT & DEFI TVL
 @st.cache_data(ttl=600)
 def get_defillama_metrics():
@@ -375,7 +366,6 @@ def get_defillama_metrics():
 
     return res_data
 
-
 # 7. BITCOIN DOMINANZ
 @st.cache_data(ttl=300)
 def get_btc_dominance():
@@ -387,7 +377,6 @@ def get_btc_dominance():
     except Exception:
         pass
     return 56.5
-
 
 # 8. MAKRO-DATEN & LEITMÄRKTE
 @st.cache_data(ttl=60)
@@ -402,7 +391,6 @@ def get_macro_bond_yield():
     except Exception:
         pass
     return None, 0.0
-
 
 @st.cache_data(ttl=60)
 def get_extended_macro_data():
@@ -463,7 +451,6 @@ def get_extended_macro_data():
 
     return data
 
-
 @st.cache_data(ttl=60)
 def get_stock_indices():
     indices = {"SP500": "^GSPC", "DAX": "^GDAXI"}
@@ -480,7 +467,6 @@ def get_stock_indices():
         except Exception:
             pass
     return results
-
 
 @st.cache_data(ttl=60)
 def get_asian_markets():
@@ -513,7 +499,6 @@ def get_asian_markets():
 
     return data if data else None
 
-
 @st.cache_data(ttl=60)
 def get_eurozone_market():
     try:
@@ -528,7 +513,6 @@ def get_eurozone_market():
         pass
     return None
 
-
 def analyze_whale_activity(volume, change_24h):
     if volume > 2000000000 and change_24h < -1.5:
         return ("🔴 Whale-Warnung: Hohe Börsenzuflüsse", -1)
@@ -536,7 +520,6 @@ def analyze_whale_activity(volume, change_24h):
         return ("🟢 Whale-Akkumulation: OTC-Käufe", 1)
     else:
         return ("🟡 Unauffällige On-Chain-Aktivität", 0)
-
 
 @st.cache_data(ttl=30)
 def calculate_atr(symbol, limit=30):
@@ -589,7 +572,6 @@ def calculate_atr(symbol, limit=30):
         pass
     return 0.0
 
-
 @st.cache_data(ttl=30)
 def get_real_rsi(symbol, limit=30):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -633,7 +615,6 @@ def get_real_rsi(symbol, limit=30):
         pass
     return 50.0
 
-
 @st.cache_data(ttl=60)
 def get_real_funding_rate(coin_name="Bitcoin"):
     futures_map = {
@@ -654,7 +635,6 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except Exception:
         pass
     return 0.0001
-
 
 # --- AUTONOMES SELBSTLERN-SYSTEM ---
 def generate_local_self_learning_optimizations(df_archive, df_market, current_data):
@@ -735,7 +715,6 @@ Basierend auf **{total_predictions} ausgewerteten Zyklen** in `prediction_log.cs
     )
 
     return report, weights
-
 
 def calculate_detailed_factor_scores(
     perf_val,
@@ -863,7 +842,6 @@ def calculate_detailed_factor_scores(
         f"DeFi TVL & Liq. ({weights['Krypto-Liquidität & DeFi TVL']:.0f}%)": liq_score,
     }
 
-
 def get_automatic_macro_score(
     volume,
     fg_value,
@@ -932,7 +910,6 @@ def get_automatic_macro_score(
 
     return 1 if total > 20 else (-1 if total < -20 else 0)
 
-
 @st.cache_data(ttl=60)
 def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
@@ -982,7 +959,6 @@ def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     except Exception:
         pass
     return None
-
 
 def log_market_data(
     fg_val,
@@ -1080,7 +1056,6 @@ def log_market_data(
         df_market = pd.DataFrame([market_entry])
         save_and_commit_csv(MARKET_LOG_FILE, df_market)
 
-
 def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
@@ -1127,7 +1102,6 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
             "Datenquelle": "Binance Spot REST API",
         }])
         save_and_commit_csv(LOG_FILE, df_log)
-
 
 def generate_signal(
     perf_val,
@@ -1187,7 +1161,6 @@ def generate_signal(
         return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: +{perf_val:.1f}%).")
     else:
         return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({perf_val:+.1f}%).")
-
 
 # LIVE-DATEN ABRUFEN
 bond_val, bond_change = get_macro_bond_yield()
