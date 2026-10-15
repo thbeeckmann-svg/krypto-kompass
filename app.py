@@ -291,15 +291,14 @@ def get_vix_and_nasdaq():
     return data
 
 
-# 5. ULTRA-ROBUSTE NEWS- & SENTIMENT-FUNKTION (MIT INTELLIGENTEM FALLBACK)
+# 5. ULTRA-ROBUSTE NEWS- & SENTIMENT-FUNKTION (GARANTIERTER FALLBACK)
 @st.cache_data(ttl=10)
 def get_news_sentiment_score():
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     headlines = []
-    sentiment_points = 0
-
+    
     try:
         res = requests.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN", headers=headers, timeout=5)
         if res.status_code == 200:
@@ -329,14 +328,17 @@ def get_news_sentiment_score():
             "On-Chain Aktivität: Langfristige Halter zeigen konstante Akkumulation",
             "Liquiditäts-Update: Globale Stablecoin-Märkte in Seitwärtsphase"
         ]
+
+    sentiment_points = 0
+    for h in headlines:
+        t_low = h.lower()
+        if any(w in t_low for w in ["bull", "cut", "rally", "gain", "up", "high", "surge", "approval", "growth"]):
+            sentiment_points += 20
+        if any(w in t_low for w in ["bear", "hike", "drop", "fall", "down", "low", "crash", "ban", "inflation"]):
+            sentiment_points -= 20
+
+    if sentiment_points == 0:
         sentiment_points = 25
-    else:
-        for h in headlines:
-            t_low = h.lower()
-            if any(w in t_low for w in ["bull", "cut", "rally", "gain", "up", "high", "surge", "approval", "growth"]):
-                sentiment_points += 20
-            if any(w in t_low for w in ["bear", "hike", "drop", "fall", "down", "low", "crash", "ban", "inflation"]):
-                sentiment_points -= 20
 
     return max(-100, min(100, sentiment_points)), headlines[:5]
 
