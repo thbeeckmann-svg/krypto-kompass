@@ -111,16 +111,14 @@ MARKET_LOG_FILE = "market_data_log.csv"
 
 # --- AUTOMATISCHER GITHUB CLOUD-SPEICHER MIT DROSSELUNG & TOAST-FEEDBACK ---
 def save_and_commit_csv(file_path, df, force_commit=False):
-    # 1. Immer lokal im aktuellen Container speichern
     df.to_csv(file_path, index=False)
     
-    # 2. Prüfen, ob in den letzten 30 Minuten bereits ein GitHub-Commit für diese Datei stattfand
     last_commit_key = f"last_commit_{file_path}"
     now = datetime.now(BERLIN_TZ)
     
     if not force_commit and last_commit_key in st.session_state:
         time_diff = (now - st.session_state[last_commit_key]).total_seconds()
-        if time_diff < 1800:  # Erst nach 30 Min. (1800 Sek.) erneut an GitHub senden
+        if time_diff < 1800:  # Erst nach 30 Min. erneut committen
             return
 
     github_token = st.secrets.get("GITHUB_TOKEN")
@@ -133,7 +131,6 @@ def save_and_commit_csv(file_path, df, force_commit=False):
                 "Authorization": f"token {github_token}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            # SHA der existierenden Datei abfragen (erforderlich für GitHub-Update)
             res = requests.get(url, headers=headers, timeout=5)
             sha = res.json().get("sha") if res.status_code == 200 else None
             
@@ -149,7 +146,7 @@ def save_and_commit_csv(file_path, df, force_commit=False):
                 
             put_res = requests.put(url, headers=headers, json=payload, timeout=5)
             if put_res.status_code in [200, 201]:
-                st.session_state[last_commit_key] = now  # Zeitstempel aktualisieren
+                st.session_state[last_commit_key] = now
                 st.toast(f"☁️ {file_path} erfolgreich auf GitHub gesichert!", icon="✅")
         except Exception:
             pass
@@ -317,7 +314,6 @@ def get_news_sentiment_score():
         "hack", "exploit", "crash", "liquidation", "wall street fall"
     ]
 
-    # QUELLE 1: CryptoCompare JSON API (Sehr zuverlässig)
     try:
         url_cc = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
         res_cc = requests.get(url_cc, headers=headers, timeout=4)
@@ -331,7 +327,6 @@ def get_news_sentiment_score():
     except Exception:
         pass
 
-    # QUELLE 2: Google News RSS (Makro & Zinsen)
     try:
         gn_url = "https://news.google.com/rss/search?q=bitcoin+OR+crypto+OR+fed+rate&hl=en-US&gl=US&ceid=US:en"
         res_gn = requests.get(gn_url, headers=headers, timeout=4)
@@ -346,7 +341,6 @@ def get_news_sentiment_score():
     except Exception:
         pass
 
-    # QUELLE 3: CoinGecko News API (JSON Fallback)
     try:
         res_cg = requests.get("https://api.coingecko.com/api/v3/news", headers=headers, timeout=4)
         if res_cg.status_code == 200:
@@ -358,7 +352,6 @@ def get_news_sentiment_score():
     except Exception:
         pass
 
-    # Sentiment-Auswertung über alle geladenen Schlagzeilen
     for h in headlines:
         text_lower = h.lower()
         for word in bullish_keywords:
@@ -376,7 +369,7 @@ def get_news_sentiment_score():
     return score, headlines[:5]
 
 
-# 6. STABLECOIN LIQUIDITÄT & DEFI TVL (DEFILLAMA API)
+# 6. STABLECOIN LIQUIDITÄT & DEFI TVL
 @st.cache_data(ttl=600)
 def get_defillama_metrics():
     res_data = {"stablecoin_mcap_b": 135.0, "global_tvl_b": 85.0}
@@ -409,7 +402,7 @@ def get_defillama_metrics():
     return res_data
 
 
-# 7. BITCOIN DOMINANZ (COINGECKO API)
+# 7. BITCOIN DOMINANZ
 @st.cache_data(ttl=300)
 def get_btc_dominance():
     try:
@@ -422,7 +415,7 @@ def get_btc_dominance():
     return 56.5
 
 
-# 8. Makro-Daten & Leitmärkte (OPTIMIERTE BATCH-ABRUFE FÜR SCHNELLE LADEZEIT)
+# 8. MAKRO-DATEN & LEITMÄRKTE
 @st.cache_data(ttl=60)
 def get_macro_bond_yield():
     try:
@@ -689,9 +682,8 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     return 0.0001
 
 
-def generate_local_self_learning_optimizations(
-    df_archive, df_market, current_data
-):
+# --- AUTONOMES SELBSTLERN-SYSTEM (DYNAMISCHE KORRELATIONS-GEWICHTUNG) ---
+def generate_local_self_learning_optimizations(df_archive, df_market, current_data):
     default_weights = {
         "Trend & Momentum": 15.0,
         "ETF Net Flows": 15.0,
@@ -732,6 +724,7 @@ def generate_local_self_learning_optimizations(
     weights = default_weights.copy()
     optimizations = []
 
+    # Dynamische Anpassung basierend auf Fehlerraten
     if buy_signals > 0 and (failed_buys / buy_signals) > 0.3:
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
@@ -1095,7 +1088,6 @@ def log_market_data(
         "DeFi_TVL_MrdUSD": llama_data.get("global_tvl_b", 0.0),
         "BTC_Dominanz_Pct": btc_dom,
         "Datenquelle": "Multi-Source API",
-        "Quellen_Hinzugefügt_Am": "2026-10-12",
     }
 
     if os.path.exists(MARKET_LOG_FILE):
@@ -1122,13 +1114,16 @@ def log_market_data(
         save_and_commit_csv(MARKET_LOG_FILE, df_market)
 
 
-def log_prediction(coin, price, signal_text, fg_val):
+def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
 
     if os.path.exists(LOG_FILE):
         try:
             df_log = pd.read_csv(LOG_FILE)
+            if "Target_Horizon" not in df_log.columns:
+                df_log["Target_Horizon"] = "7 Tage"
+
             df_log["DateOnly"] = df_log["Datum"].astype(str).str[:10]
 
             mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
@@ -1136,6 +1131,7 @@ def log_prediction(coin, price, signal_text, fg_val):
                 df_log.loc[mask, "Datum"] = today_str
                 df_log.loc[mask, "Signal"] = signal_text.split()[0]
                 df_log.loc[mask, "FearGreed"] = fg_val
+                df_log.loc[mask, "Target_Horizon"] = target_horizon
                 df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
                 save_and_commit_csv(LOG_FILE, df_log)
             else:
@@ -1145,6 +1141,7 @@ def log_prediction(coin, price, signal_text, fg_val):
                     "Kurs_Damals": price,
                     "Signal": signal_text.split()[0],
                     "FearGreed": fg_val,
+                    "Target_Horizon": target_horizon,
                     "Datenquelle": "Binance Spot REST API",
                 }])
                 df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
@@ -1159,6 +1156,7 @@ def log_prediction(coin, price, signal_text, fg_val):
             "Kurs_Damals": price,
             "Signal": signal_text.split()[0],
             "FearGreed": fg_val,
+            "Target_Horizon": target_horizon,
             "Datenquelle": "Binance Spot REST API",
         }])
         save_and_commit_csv(LOG_FILE, df_log)
@@ -1415,7 +1413,7 @@ if current_data and len(current_data) > 0:
             )
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
-            log_prediction(coin, price, signal, fg_value)
+            log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
 
             coin_results[coin] = {
                 "symbol": symbol,
@@ -1676,7 +1674,6 @@ if current_data and len(current_data) > 0:
 
                         area = base.mark_area(opacity=0.12, color=chart_color)
                         line = base.mark_line(color=chart_color, strokeWidth=2)
-                        
                         chart_layers = area + line
 
                         if "EMA" in df_chart.columns:
@@ -1791,18 +1788,14 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
             df_archive = pd.read_csv(LOG_FILE)
             if "Datenquelle" not in df_archive.columns:
                 df_archive["Datenquelle"] = "Binance Spot REST API"
-            else:
-                df_archive["Datenquelle"] = df_archive["Datenquelle"].fillna("Binance Spot REST API")
+            if "Target_Horizon" not in df_archive.columns:
+                df_archive["Target_Horizon"] = "7 Tage"
             df_archive.to_csv(LOG_FILE, index=False)
 
             if not df_archive.empty and current_data:
-                # 1. Datum parsen
                 df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
-                
-                # 2. Sortierung
                 df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
 
-                # Coin-Filter
                 all_coins = list(df_archive_sorted["Coin"].unique())
                 selected_filter = st.multiselect("🔍 Nach Coin filtern:", options=all_coins, default=all_coins)
                 df_filtered_view = df_archive_sorted[df_archive_sorted["Coin"].isin(selected_filter)]
@@ -1815,6 +1808,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     c_name = row["Coin"]
                     kurs_damals = float(row.get("Kurs_Damals", 0))
                     signal_damals = str(row.get("Signal", "")).upper()
+                    horizon = str(row.get("Target_Horizon", "7 Tage"))
                     
                     parsed_dt = row["ParsedDate"]
                     datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
@@ -1851,6 +1845,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     comparison_rows.append({
                         "Datum": datum_formatted,
                         "Coin": c_name,
+                        "Horizon": horizon,
                         "Signal": signal_damals,
                         "Kurs Damals": f"{kurs_damals:,.2f} €",
                         "Aktuell": f"{kurs_aktuell:,.2f} €",
@@ -1863,10 +1858,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 st.dataframe(
                     df_comp,
                     column_config={
-                        "Diff (%)": st.column_config.NumberColumn(
-                            "Diff",
-                            format="%+.2f %%",
-                        ),
+                        "Diff (%)": st.column_config.NumberColumn("Diff", format="%+.2f %%"),
                     },
                     use_container_width=True,
                     hide_index=True,
@@ -1941,14 +1933,11 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                             )
                         df_market_log[col] = pd.to_numeric(df_market_log[col], errors="coerce")
 
-                # FEHLENDE HISTORISCHE WERTE MIT FORWARD/BACKWARD FILL ERGÄNZEN
                 df_market_log[num_cols] = df_market_log[num_cols].ffill().bfill()
-
                 df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
 
                 st.markdown("##### 📈 Historische Trend-Entwicklung")
                 
-                # ZEILE 1: Sentiment & VIX
                 col_mc1, col_mc2 = st.columns(2)
 
                 with col_mc1:
@@ -1992,7 +1981,6 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                     else:
                         st.info("Noch keine VIX-Historie vorhanden.")
 
-                # ZEILE 2: US 10J Zins & Gold
                 col_mc3, col_mc4 = st.columns(2)
 
                 with col_mc3:
