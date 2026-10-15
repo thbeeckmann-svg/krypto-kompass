@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timedelta
 import os
 from zoneinfo import ZoneInfo
@@ -107,6 +108,41 @@ IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
 
 
+# --- AUTOMATISCHER GITHUB CLOUD-SPEICHER ---
+def save_and_commit_csv(file_path, df):
+    # 1. Lokal im aktuellen Container speichern
+    df.to_csv(file_path, index=False)
+    
+    # 2. Automatisch per API im GitHub Repository speichern
+    github_token = st.secrets.get("GITHUB_TOKEN")
+    repo = st.secrets.get("GITHUB_REPO")
+    
+    if github_token and repo:
+        try:
+            url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+            headers = {
+                "Authorization": f"token {github_token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            # SHA der existierenden Datei abfragen (erforderlich für GitHub-Update)
+            res = requests.get(url, headers=headers, timeout=5)
+            sha = res.json().get("sha") if res.status_code == 200 else None
+            
+            csv_str = df.to_csv(index=False)
+            content_b64 = base64.b64encode(csv_str.encode("utf-8")).decode("utf-8")
+            
+            payload = {
+                "message": f"🤖 Auto-Log Update: {file_path}",
+                "content": content_b64,
+            }
+            if sha:
+                payload["sha"] = sha
+                
+            requests.put(url, headers=headers, json=payload, timeout=5)
+        except Exception:
+            pass
+
+
 def clean_old_logs(file_path, days_limit=365):
     if os.path.exists(file_path):
         try:
@@ -116,7 +152,7 @@ def clean_old_logs(file_path, days_limit=365):
                 cutoff_date = datetime.now(BERLIN_TZ).replace(tzinfo=None) - timedelta(days=days_limit)
                 df_filtered = df[df["ParsedDate"] >= cutoff_date]
                 df_filtered = df_filtered.drop(columns=["ParsedDate"], errors="ignore")
-                df_filtered.to_csv(file_path, index=False)
+                save_and_commit_csv(file_path, df_filtered)
         except Exception:
             pass
 
@@ -992,10 +1028,7 @@ def log_market_data(
         "Stablecoin_Mcap_MrdUSD": llama_data.get("stablecoin_mcap_b", 0.0),
         "DeFi_TVL_MrdUSD": llama_data.get("global_tvl_b", 0.0),
         "BTC_Dominanz_Pct": btc_dom,
-        "Datenquelle": (
-            "Alternative.me, Yahoo Finance (^TNX, ^GSPC, ^GDAXI, ^DJI, ^FTSE, 000001.SS, ^N225, ^HSI, ^STOXX50E,"
-            " DX-Y.NYB, EURUSD=X, JPY=X, GC=F, SI=F, CL=F, HG=F, ^VIX, ^NDX), Coinglass, CryptoCompare, DefiLlama, CoinGecko"
-        ),
+        "Datenquelle": "Multi-Source API",
         "Quellen_Hinzugefügt_Am": "2026-10-12",
     }
 
@@ -1010,17 +1043,17 @@ def log_market_data(
                 for key, val in market_entry.items():
                     df_market.loc[df_market["DateOnly"] == date_only, key] = val
                 df_market = df_market.drop(columns=["DateOnly"], errors="ignore")
-                df_market.to_csv(MARKET_LOG_FILE, index=False)
+                save_and_commit_csv(MARKET_LOG_FILE, df_market)
             else:
                 new_row = pd.DataFrame([market_entry])
                 df_market = df_market.drop(columns=["DateOnly"], errors="ignore")
                 df_market = pd.concat([df_market, new_row], ignore_index=True)
-                df_market.to_csv(MARKET_LOG_FILE, index=False)
+                save_and_commit_csv(MARKET_LOG_FILE, df_market)
         except Exception:
             pass
     else:
         df_market = pd.DataFrame([market_entry])
-        df_market.to_csv(MARKET_LOG_FILE, index=False)
+        save_and_commit_csv(MARKET_LOG_FILE, df_market)
 
 
 def log_prediction(coin, price, signal_text, fg_val):
@@ -1034,12 +1067,12 @@ def log_prediction(coin, price, signal_text, fg_val):
 
             mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
             if mask.any():
+                # WICHTIG: Kurs_Damals NICHT überschreiben, um den Tages-Startwert zu fixieren!
                 df_log.loc[mask, "Datum"] = today_str
-                df_log.loc[mask, "Kurs_Damals"] = price
                 df_log.loc[mask, "Signal"] = signal_text.split()[0]
                 df_log.loc[mask, "FearGreed"] = fg_val
                 df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
-                df_log.to_csv(LOG_FILE, index=False)
+                save_and_commit_csv(LOG_FILE, df_log)
             else:
                 new_row = pd.DataFrame([{
                     "Datum": today_str,
@@ -1047,13 +1080,11 @@ def log_prediction(coin, price, signal_text, fg_val):
                     "Kurs_Damals": price,
                     "Signal": signal_text.split()[0],
                     "FearGreed": fg_val,
-                    "Datenquelle": (
-                        "Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)"
-                    ),
+                    "Datenquelle": "Binance Spot REST API",
                 }])
                 df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
                 df_log = pd.concat([df_log, new_row], ignore_index=True)
-                df_log.to_csv(LOG_FILE, index=False)
+                save_and_commit_csv(LOG_FILE, df_log)
         except Exception:
             pass
     else:
@@ -1063,11 +1094,9 @@ def log_prediction(coin, price, signal_text, fg_val):
             "Kurs_Damals": price,
             "Signal": signal_text.split()[0],
             "FearGreed": fg_val,
-            "Datenquelle": (
-                "Binance Spot REST API (api.binance.com/api/v3/ticker/24hr)"
-            ),
+            "Datenquelle": "Binance Spot REST API",
         }])
-        df_log.to_csv(LOG_FILE, index=False)
+        save_and_commit_csv(LOG_FILE, df_log)
 
 
 def generate_signal(
