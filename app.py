@@ -1471,6 +1471,19 @@ if current_data and len(current_data) > 0:
             logo_url = CRYPTO_LOGOS.get(coin, "")
             symbol = CRYPTO_SYMBOLS.get(coin, "")
 
+            # Dynamische Formatierung für Nachkommastellen
+            if price < 1:
+                fmt = ".4f"
+            elif price < 10:
+                fmt = ".3f"
+            else:
+                fmt = ".2f"
+
+            preis_formatiert = f"{price:{fmt}}".replace(".", ",")
+            atr_str = f"{atr_value:{fmt}}".replace(".", ",")
+            sl_str = f"{stop_loss:{fmt}}".replace(".", ",")
+            tp_str = f"{take_profit:{fmt}}".replace(".", ",")
+
             with st.container(border=True):
                 col1, col2 = st.columns([1.2, 1])
 
@@ -1482,7 +1495,7 @@ if current_data and len(current_data) > 0:
                         f"#### <img src='{logo_url}' width='22' style='vertical-align: middle; margin-right: 6px;'> {coin} ({symbol})",
                         unsafe_allow_html=True,
                     )
-                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{price:,.3f} €</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{preis_formatiert} €</div>", unsafe_allow_html=True)
                 
                 with col2:
                     st.markdown(
@@ -1526,9 +1539,9 @@ if current_data and len(current_data) > 0:
 
                     st.write("---")
                     st.markdown("##### 🛡️ ATR Risikomanagement")
-                    st.write(f"• **ATR (14):** {atr_value:,.3f} €")
-                    st.write(f"• 🛑 **Stop-Loss:** **{stop_loss:,.3f} €**")
-                    st.write(f"• 🎯 **Take-Profit:** **{take_profit:,.3f} €**")
+                    st.write(f"• **ATR (14):** {atr_str} €")
+                    st.write(f"• 🛑 **Stop-Loss:** **{sl_str} €**")
+                    st.write(f"• 🎯 **Take-Profit:** **{tp_str} €**")
 
                     st.write("---")
                     st.markdown("##### 📊 Signal-Zusammensetzung Score")
@@ -1572,8 +1585,9 @@ if current_data and len(current_data) > 0:
                     st.altair_chart(chart_scores, use_container_width=True)
 
                     if hist_price > 0:
+                        hist_formatiert = f"{hist_price:{fmt}}".replace(".", ",")
                         st.markdown(
-                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.3f} €** | Aktuell: **{price:,.3f} €**",
+                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_formatiert} €** | Aktuell: **{preis_formatiert} €**",
                             unsafe_allow_html=True,
                         )
 
@@ -1795,13 +1809,27 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         else:
                             evaluation = "Seitwärts 🟡"
 
+                    if kurs_damals < 1:
+                        kd_fmt = f"{kurs_damals:.4f}".replace(".", ",")
+                    elif kurs_damals < 10:
+                        kd_fmt = f"{kurs_damals:.3f}".replace(".", ",")
+                    else:
+                        kd_fmt = f"{kurs_damals:.2f}".replace(".", ",")
+
+                    if kurs_aktuell < 1:
+                        ka_fmt = f"{kurs_aktuell:.4f}".replace(".", ",")
+                    elif kurs_aktuell < 10:
+                        ka_fmt = f"{kurs_aktuell:.3f}".replace(".", ",")
+                    else:
+                        ka_fmt = f"{kurs_aktuell:.2f}".replace(".", ",")
+
                     comparison_rows.append({
                         "Datum": datum_formatted,
                         "Coin": c_name,
                         "Horizon": horizon,
                         "Signal": signal_damals,
-                        "Kurs Damals": f"{kurs_damals:,.3f} €",
-                        "Aktuell": f"{kurs_aktuell:,.3f} €",
+                        "Kurs Damals": f"{kd_fmt} €",
+                        "Aktuell": f"{ka_fmt} €",
                         "Diff (%)": round(diff_pct, 2),
                         "Auswertung": evaluation,
                     })
