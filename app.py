@@ -1471,7 +1471,7 @@ if current_data and len(current_data) > 0:
             logo_url = CRYPTO_LOGOS.get(coin, "")
             symbol = CRYPTO_SYMBOLS.get(coin, "")
 
-            # Dynamische Formatierung für Nachkommastellen
+            # Dynamische Formatierung für Nachkommastellen bei Textanzeigen
             if price < 1:
                 fmt = ".4f"
             elif price < 10:
@@ -1609,10 +1609,13 @@ if current_data and len(current_data) > 0:
                         else:
                             date_format = "%b %y"
 
-                        if max_p < 10:
-                            y_format = ".3f"
+                        # DYNAMISCHES FORMAT FÜR ALTAIR-CHART (Y-Achse und Tooltip)
+                        if max_p < 1:
+                            chart_y_format = ".4f"
+                        elif max_p < 10:
+                            chart_y_format = ".3f"
                         else:
-                            y_format = ",.0f"
+                            chart_y_format = ",.2f"
 
                         base = alt.Chart(df_chart).encode(
                             x=alt.X(
@@ -1632,7 +1635,7 @@ if current_data and len(current_data) > 0:
                                 title="€",
                                 scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
                                 axis=alt.Axis(
-                                    format=y_format,
+                                    format=chart_y_format,
                                     grid=True,
                                     gridColor="rgba(150, 150, 150, 0.15)",
                                 ),
@@ -1652,7 +1655,7 @@ if current_data and len(current_data) > 0:
                         points = base.mark_point(size=40, color=chart_color, filled=True).encode(
                             tooltip=[
                                 alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
-                                alt.Tooltip("Kurs:Q", title="Kurs", format=".3f" if max_p < 10 else ",.2f"),
+                                alt.Tooltip("Kurs:Q", title="Kurs", format=chart_y_format),
                             ]
                         )
 
