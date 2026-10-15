@@ -1010,3 +1010,881 @@ def log_market_data(
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
 
     sp500_v = round(stock_indices.get("SP500", {}).get("val", 0.0), 2) if stock_indices else 0.0
+    sp500_c = round(stock_indices.get("SP500", {}).get("chg", 0.0), 2) if stock_indices else 0.0
+    dax_v = round(stock_indices.get("DAX", {}).get("val", 0.0), 2) if stock_indices else 0.0
+    dax_c = round(stock_indices.get("DAX", {}).get("chg", 0.0), 2) if stock_indices else 0.0
+
+    market_entry = {
+        "Datum": today_str,
+        "FearGreed_Wert": fg_val,
+        "FearGreed_Stimmung": fg_txt,
+        "US_10J_Rendite": round(bond_val, 2) if bond_val else 0.0,
+        "US_10J_Veränderung": round(bond_change, 2) if bond_change else 0.0,
+        "SP500_Wert": sp500_v,
+        "SP500_Veränderung": sp500_c,
+        "DAX_Wert": dax_v,
+        "DAX_Veränderung": dax_c,
+        "DowJones_Wert": round(ext_macro.get("dow_val", 0.0), 2),
+        "DowJones_Veränderung": round(ext_macro.get("dow_chg", 0.0), 2),
+        "FTSE100_Wert": round(ext_macro.get("ftse_val", 0.0), 2),
+        "FTSE100_Veränderung": round(ext_macro.get("ftse_chg", 0.0), 2),
+        "Nikkei_225": round(nikkei_val, 2) if nikkei_val else 0.0,
+        "Nikkei_Veränderung": round(nikkei_chg, 2) if nikkei_chg else 0.0,
+        "Hang_Seng": round(hsi_val, 2) if hsi_val else 0.0,
+        "Hang_Seng_Veränderung": round(hsi_chg, 2) if hsi_chg else 0.0,
+        "Shanghai_Comp": round(ext_macro.get("sse_val", 0.0), 2),
+        "Shanghai_Veränderung": round(ext_macro.get("sse_chg", 0.0), 2),
+        "EuroStoxx_50": round(eu_val, 2) if eu_val else 0.0,
+        "EuroStoxx_Veränderung": round(eu_chg, 2) if eu_chg else 0.0,
+        "Spot_ETF_NetFlow_MUSD": etf_flow,
+        "DXY_Wert": round(ext_macro.get("dxy_val", 0.0), 2),
+        "DXY_Veränderung": round(ext_macro.get("dxy_chg", 0.0), 2),
+        "EURUSD_Wert": round(ext_macro.get("eurusd_val", 0.0), 4),
+        "EURUSD_Veränderung": round(ext_macro.get("eurusd_chg", 0.0), 2),
+        "USDJPY_Wert": round(ext_macro.get("usdjpy_val", 0.0), 2),
+        "USDJPY_Veränderung": round(ext_macro.get("usdjpy_chg", 0.0), 2),
+        "Gold_Wert": round(ext_macro.get("gold_val", 0.0), 2),
+        "Gold_Veränderung": round(ext_macro.get("gold_chg", 0.0), 2),
+        "Silber_Wert": round(ext_macro.get("silver_val", 0.0), 2),
+        "Silber_Veränderung": round(ext_macro.get("silver_chg", 0.0), 2),
+        "Oil_Wert": round(ext_macro.get("oil_val", 0.0), 2),
+        "Oil_Veränderung": round(ext_macro.get("oil_chg", 0.0), 2),
+        "Kupfer_Wert": round(ext_macro.get("copper_val", 0.0), 2),
+        "Kupfer_Veränderung": round(ext_macro.get("copper_chg", 0.0), 2),
+        "VIX_Wert": round(vix_data.get("vix_val", 0.0), 2),
+        "Nasdaq_Veränderung": round(vix_data.get("nasdaq_chg", 0.0), 2),
+        "News_Sentiment_Score": news_score,
+        "Stablecoin_Mcap_MrdUSD": llama_data.get("stablecoin_mcap_b", 0.0),
+        "DeFi_TVL_MrdUSD": llama_data.get("global_tvl_b", 0.0),
+        "BTC_Dominanz_Pct": btc_dom,
+        "Datenquelle": "Multi-Source API",
+    }
+
+    if os.path.exists(MARKET_LOG_FILE):
+        try:
+            df_market = pd.read_csv(MARKET_LOG_FILE)
+            for k in market_entry.keys():
+                if k not in df_market.columns:
+                    df_market[k] = np.nan
+            df_market["DateOnly"] = df_market["Datum"].astype(str).str[:10]
+            if date_only in df_market["DateOnly"].values:
+                for key, val in market_entry.items():
+                    df_market.loc[df_market["DateOnly"] == date_only, key] = val
+                df_market = df_market.drop(columns=["DateOnly"], errors="ignore")
+                save_and_commit_csv(MARKET_LOG_FILE, df_market)
+            else:
+                new_row = pd.DataFrame([market_entry])
+                df_market = df_market.drop(columns=["DateOnly"], errors="ignore")
+                df_market = pd.concat([df_market, new_row], ignore_index=True)
+                save_and_commit_csv(MARKET_LOG_FILE, df_market)
+        except Exception:
+            pass
+    else:
+        df_market = pd.DataFrame([market_entry])
+        save_and_commit_csv(MARKET_LOG_FILE, df_market)
+
+def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
+    today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
+
+    if os.path.exists(LOG_FILE):
+        try:
+            df_log = pd.read_csv(LOG_FILE)
+            if "Target_Horizon" not in df_log.columns:
+                df_log["Target_Horizon"] = "7 Tage"
+
+            df_log["DateOnly"] = df_log["Datum"].astype(str).str[:10]
+
+            mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
+            if mask.any():
+                df_log.loc[mask, "Datum"] = today_str
+                df_log.loc[mask, "Signal"] = signal_text.split()[0]
+                df_log.loc[mask, "FearGreed"] = fg_val
+                df_log.loc[mask, "Target_Horizon"] = target_horizon
+                df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
+                save_and_commit_csv(LOG_FILE, df_log)
+            else:
+                new_row = pd.DataFrame([{
+                    "Datum": today_str,
+                    "Coin": coin,
+                    "Kurs_Damals": price,
+                    "Signal": signal_text.split()[0],
+                    "FearGreed": fg_val,
+                    "Target_Horizon": target_horizon,
+                    "Datenquelle": "Binance Spot REST API",
+                }])
+                df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
+                df_log = pd.concat([df_log, new_row], ignore_index=True)
+                save_and_commit_csv(LOG_FILE, df_log)
+        except Exception:
+            pass
+    else:
+        df_log = pd.DataFrame([{
+            "Datum": today_str,
+            "Coin": coin,
+            "Kurs_Damals": price,
+            "Signal": signal_text.split()[0],
+            "FearGreed": fg_val,
+            "Target_Horizon": target_horizon,
+            "Datenquelle": "Binance Spot REST API",
+        }])
+        save_and_commit_csv(LOG_FILE, df_log)
+
+def generate_signal(
+    perf_val,
+    volume,
+    fg_value,
+    bond_change,
+    asian_markets,
+    eurozone_market,
+    stock_indices,
+    etf_net_flow,
+    vix_data,
+    news_score,
+    llama_data,
+    btc_dom,
+    zeitraum,
+    weights,
+    rsi_val=None,
+    funding_rate=None,
+):
+    macro_score = get_automatic_macro_score(
+        volume,
+        fg_value,
+        bond_change,
+        perf_val,
+        asian_markets,
+        eurozone_market,
+        stock_indices,
+        etf_net_flow,
+        vix_data,
+        news_score,
+        llama_data,
+        btc_dom,
+        rsi_val=rsi_val,
+        funding_rate=funding_rate,
+        weights=weights,
+    )
+    if zeitraum == "24 Stunden":
+        t_sf, t_mf, t_ms, t_ss = -7.5, -3.0, 3.5, 7.5
+    elif zeitraum == "7 Tage":
+        t_sf, t_mf, t_ms, t_ss = -13.0, -4.5, 5.5, 13.0
+    elif zeitraum == "30 Tage":
+        t_sf, t_mf, t_ms, t_ss = -22.0, -8.0, 9.0, 22.0
+    elif zeitraum == "90 Tage":
+        t_sf, t_mf, t_ms, t_ss = -32.0, -11.0, 13.0, 32.0
+    elif zeitraum == "6 Monate":
+        t_sf, t_mf, t_ms, t_ss = -45.0, -15.0, 18.0, 45.0
+    else:
+        t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
+
+    if perf_val <= t_sf and macro_score >= 0:
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Deutlicher Kursrücksetzer ({zeitraum}: {perf_val:.1f}%).")
+    elif perf_val <= t_mf:
+        return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({perf_val:.1f}%).")
+    elif perf_val >= t_ss and (fg_value >= 75 or macro_score < 0):
+        return ("GEWINNE SICHERN 🔴🔴", f"Starker Preissprung ({zeitraum}: +{perf_val:.1f}%).")
+    elif perf_val >= t_ms:
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: +{perf_val:.1f}%).")
+    else:
+        return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({perf_val:+.1f}%).")
+
+# LIVE-DATEN ABRUFEN
+bond_val, bond_change = get_macro_bond_yield()
+ext_macro = get_extended_macro_data()
+stock_indices = get_stock_indices()
+asian_markets = get_asian_markets()
+eurozone_market = get_eurozone_market()
+fg_value, fg_text = get_fear_and_greed()
+real_etf_flow = get_real_spot_etf_flows()
+
+vix_data = get_vix_and_nasdaq()
+news_score, top_headlines = get_news_sentiment_score()
+llama_data = get_defillama_metrics()
+btc_dom = get_btc_dominance()
+
+current_data = get_current_data()
+
+df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
+df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
+
+local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(
+    df_archive_check, df_market_check, current_data
+)
+
+# EINSTELLUNGEN & INVESTITIONS-PLANUNG
+with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
+    col_e1, col_e2 = st.columns(2)
+    
+    with col_e1:
+        zeitraum_wahl = st.selectbox(
+            "Rückblick-Zeitraum wählen:",
+            ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr"],
+            index=1,
+        )
+        investment_wahl = st.selectbox(
+            "Geplantes Ordervolumen (Tranche):",
+            [100, 500, 1000, 2500, 5000, "Individuell"],
+            index=1,
+        )
+        if investment_wahl == "Individuell":
+            geplantes_budget = st.number_input(
+                "Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0
+            )
+        else:
+            geplantes_budget = float(investment_wahl)
+
+    with col_e2:
+        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+        ausgewaehlte_coins = st.multiselect(
+            "Kryptowährungen anzeigen:",
+            options=list(coins_map.keys()),
+            default=list(coins_map.keys()),
+        )
+        auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
+
+    st.write("---")
+    manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert KI-Automatik)", value=False)
+    
+    if manuelle_gewichtung:
+        col_w1, col_w2, col_w3, col_w4 = st.columns(4)
+        w_trend = col_w1.slider("Trend & Momentum (%)", 0, 50, 15)
+        w_etf = col_w2.slider("ETF Net Flows (%)", 0, 50, 15)
+        w_makro = col_w3.slider("Makro & VIX (%)", 0, 50, 15)
+        w_fg = col_w4.slider("Fear & Greed (%)", 0, 50, 15)
+
+        w_fund = col_w1.slider("Funding Rate (%)", 0, 50, 15)
+        w_rsi = col_w2.slider("RSI & Vola (%)", 0, 50, 10)
+        w_news = col_w3.slider("News/Zinsen (%)", 0, 50, 10)
+        w_liq = col_w4.slider("DeFi TVL & Liq (%)", 0, 50, 5)
+
+        active_weights = {
+            "Trend & Momentum": float(w_trend),
+            "ETF Net Flows": float(w_etf),
+            "Makro (Zins/Aktien/Währung/VIX)": float(w_makro),
+            "Fear & Greed Index": float(w_fg),
+            "Funding Rates & Derivate": float(w_fund),
+            "RSI & Volatilität": float(w_rsi),
+            "Nachrichten & Zins-Sentiment": float(w_news),
+            "Krypto-Liquidität & DeFi TVL": float(w_liq),
+        }
+    else:
+        active_weights = dynamic_weights
+
+    st.write("---")
+    portfolio_tranche_placeholder = st.container()
+
+if auto_refresh_aktiv:
+    st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
+
+if zeitraum_wahl == "24 Stunden":
+    limit_anzahl, interval, wöchentlich = 24, "1h", False
+elif zeitraum_wahl == "7 Tage":
+    limit_anzahl, interval, wöchentlich = 7, "1d", False
+elif zeitraum_wahl == "30 Tage":
+    limit_anzahl, interval, wöchentlich = 30, "1d", False
+elif zeitraum_wahl == "90 Tage":
+    limit_anzahl, interval, wöchentlich = 90, "1d", True
+elif zeitraum_wahl == "6 Monate":
+    limit_anzahl, interval, wöchentlich = 180, "1d", True
+else:
+    limit_anzahl, interval, wöchentlich = 365, "1d", True
+
+nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
+nikkei_chg = asian_markets.get("Nikkei_225", {}).get("change") if asian_markets else 0.0
+hsi_val = asian_markets.get("Hang_Seng", {}).get("value") if asian_markets else None
+hsi_chg = asian_markets.get("Hang_Seng", {}).get("change") if asian_markets else 0.0
+
+eu_val = eurozone_market.get("value") if eurozone_market else None
+eu_chg = eurozone_market.get("change") if eurozone_market else 0.0
+
+log_market_data(
+    fg_value,
+    fg_text,
+    bond_val,
+    bond_change,
+    nikkei_val,
+    nikkei_chg,
+    hsi_val,
+    hsi_chg,
+    eu_val,
+    eu_chg,
+    real_etf_flow,
+    ext_macro,
+    stock_indices,
+    vix_data,
+    news_score,
+    llama_data,
+    btc_dom,
+)
+
+if current_data and len(current_data) > 0:
+    if not ausgewaehlte_coins:
+        st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
+    else:
+        coin_results = {}
+        for coin in ausgewaehlte_coins:
+            symbol = coins_map[coin]
+            values = current_data.get(coin, {})
+            price = values.get("eur", 0)
+            change_24h = values.get("eur_24h_change", 0)
+            volume = values.get("volume", 0)
+
+            atr_value = calculate_atr(symbol, limit=30)
+            rsi_value = get_real_rsi(symbol, limit=30)
+            funding_rate_val = get_real_funding_rate(coin)
+
+            stop_loss = max(0.0, price - (2.0 * atr_value)) if atr_value > 0 else price * 0.95
+            take_profit = price + (3.0 * atr_value) if atr_value > 0 else price * 1.08
+
+            df_history = get_historical_data(symbol, limit_anzahl, interval, weekly=wöchentlich)
+            perf_val, hist_price = 0.0, 0.0
+            if df_history is not None and not df_history.empty:
+                hist_price = df_history.iloc[0]["Kurs"]
+                if hist_price > 0:
+                    perf_val = ((price - hist_price) / hist_price) * 100
+
+            signal, reason = generate_signal(
+                perf_val,
+                volume,
+                fg_value,
+                bond_change,
+                asian_markets,
+                eurozone_market,
+                stock_indices,
+                real_etf_flow,
+                vix_data,
+                news_score,
+                llama_data,
+                btc_dom,
+                zeitraum_wahl,
+                active_weights,
+                rsi_val=rsi_value,
+                funding_rate=funding_rate_val,
+            )
+            whale_msg, _ = analyze_whale_activity(volume, change_24h)
+
+            log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
+
+            coin_results[coin] = {
+                "symbol": symbol,
+                "price": price,
+                "change_24h": change_24h,
+                "volume": volume,
+                "atr_value": atr_value,
+                "rsi_value": rsi_value,
+                "funding_rate_val": funding_rate_val,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
+                "df_history": df_history,
+                "perf_val": perf_val,
+                "hist_price": hist_price,
+                "signal": signal,
+                "reason": reason,
+                "whale_msg": whale_msg,
+            }
+
+        portfolio_weights = {}
+        for coin, res in coin_results.items():
+            sig = res["signal"]
+            if "STARKE KAUFCHANCE" in sig:
+                portfolio_weights[coin] = 1.0
+            elif "KAUFEN" in sig:
+                portfolio_weights[coin] = 0.5
+            else:
+                portfolio_weights[coin] = 0.0
+
+        total_portfolio_weight = sum(portfolio_weights.values())
+        denom = max(1.0, total_portfolio_weight)
+
+        total_invested_eur = 0.0
+        for coin, res in coin_results.items():
+            w = portfolio_weights[coin]
+            alloc_eur = round(geplantes_budget * (w / denom), 2)
+            alloc_pct = round((alloc_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
+            res["investition_eur"] = alloc_eur
+            res["investition_pct"] = alloc_pct
+            res["portfolio_weight"] = w
+            total_invested_eur += alloc_eur
+
+        cash_reserve_eur = max(0.0, round(geplantes_budget - total_invested_eur, 2))
+        cash_reserve_pct = round((cash_reserve_eur / geplantes_budget) * 100, 1) if geplantes_budget > 0 else 0.0
+
+        with portfolio_tranche_placeholder:
+            st.markdown("💼 **Portfolio-Tranche Allokation:**")
+            col_p1, col_p2, col_p3 = st.columns(3)
+            col_p1.metric("Gesamt", f"{geplantes_budget:,.0f} €")
+            col_p2.metric("Krypto", f"{total_invested_eur:,.0f} €", f"{100.0 - cash_reserve_pct:.0f}%")
+            col_p3.metric("Cash", f"{cash_reserve_eur:,.0f} €", f"{cash_reserve_pct:.0f}%")
+
+            alloc_chart_data = []
+            for coin, res in coin_results.items():
+                if res["investition_eur"] > 0:
+                    alloc_chart_data.append({
+                        "Asset": coin,
+                        "Betrag (€)": res["investition_eur"],
+                        "Anteil (%)": res["investition_pct"],
+                    })
+            if cash_reserve_eur > 0:
+                alloc_chart_data.append({
+                    "Asset": "💵 Cash",
+                    "Betrag (€)": cash_reserve_eur,
+                    "Anteil (%)": cash_reserve_pct,
+                })
+
+            if alloc_chart_data:
+                df_alloc_chart = pd.DataFrame(alloc_chart_data)
+                chart_alloc = (
+                    alt.Chart(df_alloc_chart)
+                    .mark_bar(cornerRadiusEnd=4)
+                    .encode(
+                        x=alt.X("Betrag (€):Q", title=None),
+                        y=alt.Y("Asset:N", sort=None, title=None),
+                        color=alt.Color("Asset:N", scale=alt.Scale(scheme="category10"), legend=None),
+                        tooltip=["Asset", "Betrag (€)", "Anteil (%)"],
+                    )
+                    .properties(height=max(120, len(alloc_chart_data) * 35))
+                )
+                st.altair_chart(chart_alloc, use_container_width=True)
+
+        st.markdown("### 🪙 Einzelne Kryptowährungen")
+
+        for coin, res in coin_results.items():
+            price = res["price"]
+            change_24h = res["change_24h"]
+            volume = res["volume"]
+            atr_value = res["atr_value"]
+            rsi_value = res["rsi_value"]
+            funding_rate_val = res["funding_rate_val"]
+            stop_loss = res["stop_loss"]
+            take_profit = res["take_profit"]
+            perf_val = res["perf_val"]
+            hist_price = res["hist_price"]
+            df_history = res["df_history"]
+            signal = res["signal"]
+            reason = res["reason"]
+            whale_msg = res["whale_msg"]
+            investition_eur = res["investition_eur"]
+            investition_pct = res["investition_pct"]
+
+            coin_menge = investition_eur / price if price > 0 else 0.0
+            logo_url = CRYPTO_LOGOS.get(coin, "")
+            symbol = CRYPTO_SYMBOLS.get(coin, "")
+
+            # Dynamische Formatierung für Nachkommastellen bei Textanzeigen
+            if price < 1:
+                fmt = ".4f"
+            elif price < 10:
+                fmt = ".3f"
+            else:
+                fmt = ".2f"
+
+            preis_formatiert = f"{price:{fmt}}".replace(".", ",")
+            atr_str = f"{atr_value:{fmt}}".replace(".", ",")
+            sl_str = f"{stop_loss:{fmt}}".replace(".", ",")
+            tp_str = f"{take_profit:{fmt}}".replace(".", ",")
+
+            with st.container(border=True):
+                col1, col2 = st.columns([1.2, 1])
+
+                perf_color_hex = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+                bg_badge = "rgba(46, 204, 113, 0.12)" if perf_val >= 0 else "rgba(231, 76, 60, 0.12)"
+
+                with col1:
+                    st.markdown(
+                        f"#### <img src='{logo_url}' width='22' style='vertical-align: middle; margin-right: 6px;'> {coin} ({symbol})",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{preis_formatiert} €</div>", unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(
+                        f"""
+                        <div style='text-align: right; margin-bottom: 2px;'>
+                            <span style='background-color: {bg_badge}; color: {perf_color_hex}; font-size: 1.25rem; font-weight: bold; padding: 4px 10px; border-radius: 8px; display: inline-block;'>
+                                {perf_val:+.2f}%
+                            </span>
+                        </div>
+                        <div style='text-align: right; font-size: 0.75rem; color: gray;'>
+                            Veränderung ({zeitraum_wahl})
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.write("---")
+
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    st.markdown(f"**Signal:** {signal}")
+                with col_s2:
+                    st.markdown(f"**Tranche:** **{investition_eur:,.2f} €** ({investition_pct}%)")
+
+                with st.expander("🔍 **Details, Analyse & Chart**", expanded=False):
+                    st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
+                    
+                    st.markdown(
+                        f"🎯 **Empfehlung:** ca. **{coin_menge:.4f} {coin.upper()} {symbol}** kaufen "
+                        f"({investition_eur:,.2f} € aus der Tranche)."
+                    )
+                    
+                    st.write("---")
+                    st.markdown("##### 📊 Live-Marktindikatoren & Wal-Tracker")
+                    st.caption(
+                        f"🏛 **Spot-ETF Net Flow:** **{real_etf_flow:+.1f}M $**\n\n"
+                        f"📊 **RSI (14):** **{rsi_value:.1f}** | ⚡ **Funding Rate:** **{funding_rate_val*100:+.3f}%**\n\n"
+                        f"📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 🔒 **DeFi TVL:** **{llama_data.get('global_tvl_b', 0):.1f} Mrd. $**\n\n"
+                        f"🐋 **Wal-Aktivität:** {whale_msg}"
+                    )
+
+                    st.write("---")
+                    st.markdown("##### 🛡️ ATR Risikomanagement")
+                    st.write(f"• **ATR (14):** {atr_str} €")
+                    st.write(f"• 🛑 **Stop-Loss:** **{sl_str} €**")
+                    st.write(f"• 🎯 **Take-Profit:** **{tp_str} €**")
+
+                    st.write("---")
+                    st.markdown("##### 📊 Signal-Zusammensetzung Score")
+                    factor_scores = calculate_detailed_factor_scores(
+                        perf_val,
+                        volume,
+                        fg_value,
+                        bond_change,
+                        asian_markets,
+                        eurozone_market,
+                        stock_indices,
+                        real_etf_flow,
+                        vix_data,
+                        news_score,
+                        llama_data,
+                        btc_dom,
+                        rsi_val=rsi_value,
+                        funding_rate=funding_rate_val,
+                        weights=active_weights,
+                    )
+
+                    df_scores = pd.DataFrame(
+                        list(factor_scores.items()), columns=["Indikator", "Score"]
+                    )
+
+                    chart_scores = (
+                        alt.Chart(df_scores)
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("Score:Q", scale=alt.Scale(domain=[-100, 100]), title="Bärisch (-100) | Bullisch (+100)"),
+                            y=alt.Y("Indikator:N", sort=None, title=None),
+                            color=alt.condition(
+                                alt.datum.Score > 0,
+                                alt.value("#2ecc71"),
+                                alt.value("#e74c3c"),
+                            ),
+                            tooltip=["Indikator", "Score"],
+                        )
+                        .properties(height=250)
+                    )
+                    st.altair_chart(chart_scores, use_container_width=True)
+
+                    if hist_price > 0:
+                        hist_formatiert = f"{hist_price:{fmt}}".replace(".", ",")
+                        st.markdown(
+                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_formatiert} €** | Aktuell: **{preis_formatiert} €**",
+                            unsafe_allow_html=True,
+                        )
+
+                    if df_history is not None and not df_history.empty:
+                        df_chart = df_history.reset_index().copy()
+
+                        if len(df_chart) >= 5:
+                            span_val = min(20, len(df_chart))
+                            df_chart["EMA"] = df_chart["Kurs"].ewm(span=span_val, adjust=False).mean()
+
+                        min_p, max_p = df_chart["Kurs"].min(), df_chart["Kurs"].max()
+                        puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
+                        chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+
+                        if zeitraum_wahl == "24 Stunden":
+                            date_format = "%H:%M"
+                        elif zeitraum_wahl in ["7 Tage", "30 Tage"]:
+                            date_format = "%d.%m."
+                        else:
+                            date_format = "%b %y"
+
+                        # DYNAMISCHES FORMAT FÜR ALTAIR-CHART (Y-Achse und Tooltip)
+                        if max_p < 1:
+                            chart_y_format = ".4f"
+                        elif max_p < 10:
+                            chart_y_format = ".3f"
+                        else:
+                            chart_y_format = ",.2f"
+
+                        base = alt.Chart(df_chart).encode(
+                            x=alt.X(
+                                "Timestamp:T",
+                                title=None,
+                                axis=alt.Axis(
+                                    format=date_format,
+                                    labelAngle=0,
+                                    grid=True,
+                                    gridDash=[2, 2],
+                                    gridColor="rgba(150, 150, 150, 0.15)",
+                                    tickCount=6,
+                                ),
+                            ),
+                            y=alt.Y(
+                                "Kurs:Q",
+                                title="€",
+                                scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False),
+                                axis=alt.Axis(
+                                    format=chart_y_format,
+                                    grid=True,
+                                    gridColor="rgba(150, 150, 150, 0.15)",
+                                ),
+                            ),
+                        ).properties(height=220)
+
+                        area = base.mark_area(opacity=0.12, color=chart_color)
+                        line = base.mark_line(color=chart_color, strokeWidth=2)
+                        chart_layers = area + line
+
+                        if "EMA" in df_chart.columns:
+                            ema_line = base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(
+                                y=alt.Y("EMA:Q")
+                            )
+                            chart_layers = chart_layers + ema_line
+
+                        points = base.mark_point(size=40, color=chart_color, filled=True).encode(
+                            tooltip=[
+                                alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
+                                alt.Tooltip("Kurs:Q", title="Kurs", format=chart_y_format),
+                            ]
+                        )
+
+                        final_chart = (chart_layers + points).interactive()
+                        st.altair_chart(final_chart, use_container_width=True)
+else:
+    st.warning("Konnte keine Marktdaten laden.")
+
+st.write("---")
+
+# GLOBALER MARKT & MAKRO-ÜBERSICHT
+bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
+signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
+
+with st.container(border=True):
+    st.markdown(f"📊 **Sentiment-Index:** **{fg_value} / 100** ({fg_text}) {signal_icon}")
+    st.markdown(
+        f"""
+        <div style="background-color: #e0e0e0; border-radius: 10px; width: 100%; height: 12px; overflow: hidden; margin-top: 4px; margin-bottom: 8px;">
+            <div style="background-color: {bar_color}; width: {fg_value}%; height: 100%;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("🌐 **Globale Leitmärkte & Makro-Details**", expanded=False):
+        if bond_val is not None:
+            bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
+            st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
+
+        dxy_color = "#2ecc71" if ext_macro.get("dxy_chg", 0) >= 0 else "#e74c3c"
+        eur_color = "#2ecc71" if ext_macro.get("eurusd_chg", 0) >= 0 else "#e74c3c"
+        jpy_color = "#2ecc71" if ext_macro.get("usdjpy_chg", 0) >= 0 else "#e74c3c"
+
+        gold_color = "#2ecc71" if ext_macro.get("gold_chg", 0) >= 0 else "#e74c3c"
+        silver_color = "#2ecc71" if ext_macro.get("silver_chg", 0) >= 0 else "#e74c3c"
+        oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
+        copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
+
+        vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
+        etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
+
+        st.markdown(
+            f"""
+            <div style="line-height: 1.8; font-size: 0.95rem;">
+                💵 <b>DXY:</b> {ext_macro.get('dxy_val', 0):.2f} (<span style="color:{dxy_color}; font-weight:bold;">{ext_macro.get('dxy_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💶 <b>EUR/USD:</b> {ext_macro.get('eurusd_val', 0):.4f} (<span style="color:{eur_color}; font-weight:bold;">{ext_macro.get('eurusd_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💴 <b>USD/JPY:</b> {ext_macro.get('usdjpy_val', 0):.2f} (<span style="color:{jpy_color}; font-weight:bold;">{ext_macro.get('usdjpy_chg', 0):+.2f}%</span>)<br>
+                🥇 <b>Gold:</b> {ext_macro.get('gold_val', 0):,.1f} $ (<span style="color:{gold_color}; font-weight:bold;">{ext_macro.get('gold_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🥈 <b>Silber:</b> {ext_macro.get('silver_val', 0):,.2f} $ (<span style="color:{silver_color}; font-weight:bold;">{ext_macro.get('silver_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🛢 <b>Öl:</b> {ext_macro.get('oil_val', 0):,.1f} $ (<span style="color:{oil_color}; font-weight:bold;">{ext_macro.get('oil_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                🏗 <b>Kupfer:</b> {ext_macro.get('copper_val', 0):,.2f} $ (<span style="color:{copper_color}; font-weight:bold;">{ext_macro.get('copper_chg', 0):+.2f}%</span>)<br>
+                📉 <b>CBOE VIX (Panik):</b> {vix_data.get('vix_val', 0):.1f} (<span style="color:{vix_color}; font-weight:bold;">{vix_data.get('vix_chg', 0):+.2f}%</span>) &nbsp;|&nbsp; 
+                💻 <b>Nasdaq 100:</b> <span style="color:{ndx_color}; font-weight:bold;">{vix_data.get('nasdaq_chg', 0):+.2f}%</span><br>
+                🏦 <b>Spot-ETF Nettofluss:</b> <span style="color:{etf_color}; font-weight:bold;">{real_etf_flow:+.1f} Mio. USD</span> &nbsp;|&nbsp; 
+                💧 <b>DeFi TVL:</b> <b>{llama_data.get('global_tvl_b', 0):.1f} Mrd. $</b> &nbsp;|&nbsp; 
+                🪙 <b>BTC Dominanz:</b> <b>{btc_dom:.1f}%</b>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if stock_indices:
+            sp500_v, sp500_c = stock_indices.get("SP500", {}).get("val", 0), stock_indices.get("SP500", {}).get("chg", 0)
+            dax_v, dax_c = stock_indices.get("DAX", {}).get("val", 0), stock_indices.get("DAX", {}).get("chg", 0)
+            dow_v, dow_c = ext_macro.get("dow_val", 0), ext_macro.get("dow_chg", 0)
+            ftse_v, ftse_c = ext_macro.get("ftse_val", 0), ext_macro.get("ftse_chg", 0)
+            st.write(
+                f"📈 **S&P 500:** {sp500_v:,.0f} ({sp500_c:+.2f}%) | "
+                f"**Dow Jones:** {dow_v:,.0f} ({dow_c:+.2f}%) | "
+                f"**DAX:** {dax_v:,.0f} ({dax_c:+.2f}%) | "
+                f"**FTSE 100:** {ftse_v:,.0f} ({ftse_c:+.2f}%)"
+            )
+
+        if asian_markets:
+            n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
+            h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
+            sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
+            st.write(
+                f"🌏 **Nikkei 225:** {n_val:,.0f} ({n_chg:+.2f}%) | "
+                f"**Hang Seng:** {h_val:,.0f} ({h_chg:+.2f}%) | "
+                f"**Shanghai Comp:** {sse_v:,.0f} ({sse_c:+.2f}%)"
+            )
+
+        st.write("---")
+        st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
+        if top_headlines:
+            st.caption("Aktuelle Schlagzeilen:")
+            for h in top_headlines:
+                st.markdown(f"- *{h}*")
+
+# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM
+st.write("")
+with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
+    st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage**.")
+
+    if os.path.exists(LOG_FILE):
+        try:
+            df_archive = pd.read_csv(LOG_FILE)
+            if "Datenquelle" not in df_archive.columns:
+                df_archive["Datenquelle"] = "Binance Spot REST API"
+            if "Target_Horizon" not in df_archive.columns:
+                df_archive["Target_Horizon"] = "7 Tage"
+            df_archive.to_csv(LOG_FILE, index=False)
+
+            if not df_archive.empty and current_data:
+                df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
+                df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
+
+                all_coins = list(df_archive_sorted["Coin"].unique())
+                selected_filter = st.multiselect("🔍 Nach Coin filtern:", options=all_coins, default=all_coins)
+                df_filtered_view = df_archive_sorted[df_archive_sorted["Coin"].isin(selected_filter)]
+
+                comparison_rows, backtest_data = [], []
+                correct_hits, total_evaluated = 0, 0
+                sim_depot_signal, sim_depot_hold = 100.0, 100.0
+
+                for index, row in df_filtered_view.iterrows():
+                    c_name = row["Coin"]
+                    kurs_damals = float(row.get("Kurs_Damals", 0))
+                    signal_damals = str(row.get("Signal", "")).upper()
+                    horizon = str(row.get("Target_Horizon", "7 Tage"))
+                    
+                    parsed_dt = row["ParsedDate"]
+                    datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
+
+                    kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
+                    diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
+
+                    if "KAUF" in signal_damals:
+                        sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
+                    sim_depot_hold *= 1.0 + (diff_pct / 100.0)
+
+                    backtest_data.append({
+                        "Datum": datum_formatted,
+                        "App-Strategie": round(sim_depot_signal, 2),
+                        "Buy & Hold": round(sim_depot_hold, 2),
+                    })
+
+                    evaluation = "Neutral 🟡"
+                    if "KAUF" in signal_damals:
+                        total_evaluated += 1
+                        if diff_pct > -1.5:
+                            correct_hits += 1
+                            evaluation = "Treffer 🟢"
+                        else:
+                            evaluation = "Fehlsignal 🔴"
+                    elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
+                        total_evaluated += 1
+                        if diff_pct < 1.5:
+                            correct_hits += 1
+                            evaluation = "Schutz 🟢"
+                        else:
+                            evaluation = "Seitwärts 🟡"
+
+                    if kurs_damals < 1:
+                        kd_fmt = f"{kurs_damals:.4f}".replace(".", ",")
+                    elif kurs_damals < 10:
+                        kd_fmt = f"{kurs_damals:.3f}".replace(".", ",")
+                    else:
+                        kd_fmt = f"{kurs_damals:.2f}".replace(".", ",")
+
+                    if kurs_aktuell < 1:
+                        ka_fmt = f"{kurs_aktuell:.4f}".replace(".", ",")
+                    elif kurs_aktuell < 10:
+                        ka_fmt = f"{kurs_aktuell:.3f}".replace(".", ",")
+                    else:
+                        ka_fmt = f"{kurs_aktuell:.2f}".replace(".", ",")
+
+                    comparison_rows.append({
+                        "Datum": datum_formatted,
+                        "Coin": c_name,
+                        "Horizon": horizon,
+                        "Signal": signal_damals,
+                        "Kurs Damals": f"{kd_fmt} €",
+                        "Aktuell": f"{ka_fmt} €",
+                        "Diff (%)": round(diff_pct, 2),
+                        "Auswertung": evaluation,
+                    })
+
+                df_comp = pd.DataFrame(comparison_rows)
+
+                st.dataframe(
+                    df_comp,
+                    column_config={"Diff (%)": st.column_config.NumberColumn("Diff", format="%+.2f %%")},
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.write("---")
+                st.markdown("##### 📈 Backtest-Vergleich")
+                df_bt = pd.DataFrame(backtest_data)
+                if not df_bt.empty:
+                    df_bt_melted = df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")
+                    chart_bt = (
+                        alt.Chart(df_bt_melted)
+                        .mark_line(strokeWidth=2)
+                        .encode(
+                            x=alt.X("Datum:N", title=None, sort=None),
+                            y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)),
+                            color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"])),
+                            tooltip=["Datum", "Strategie", "Wert"],
+                        )
+                        .properties(height=220)
+                    )
+                    st.altair_chart(chart_bt.interactive(), use_container_width=True)
+
+                if total_evaluated > 0:
+                    hit_rate = (correct_hits / total_evaluated) * 100
+                    st.metric("Signal-Trefferquote", f"{hit_rate:.1f}%", f"{correct_hits} von {total_evaluated} Zyklen erfolgreich")
+
+                st.write("---")
+                st.markdown(local_learning_report)
+
+                st.write("---")
+                st.markdown("##### 💾 CSV-Export & Backup")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                if os.path.exists(LOG_FILE):
+                    with open(LOG_FILE, "rb") as f:
+                        col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
+                if os.path.exists(MARKET_LOG_FILE):
+                    with open(MARKET_LOG_FILE, "rb") as f:
+                        col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
+                if os.path.exists(IMP_FILE):
+                    with open(IMP_FILE, "rb") as f:
+                        col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
+        except Exception as e:
+            st.warning(f"Fehler: {e}")
+
+st.markdown("---")
+st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
