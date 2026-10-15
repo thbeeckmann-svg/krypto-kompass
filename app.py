@@ -301,7 +301,7 @@ def get_news_sentiment_score():
     sentiment_points = 0
 
     try:
-        res = requests.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN", headers=headers, timeout=3)
+        res = requests.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN", headers=headers, timeout=5)
         if res.status_code == 200:
             data = res.json().get("Data", [])
             for art in data[:5]:
@@ -313,7 +313,7 @@ def get_news_sentiment_score():
 
     if not headlines:
         try:
-            res_cg = requests.get("https://api.coingecko.com/api/v3/search/trending", headers=headers, timeout=3)
+            res_cg = requests.get("https://api.coingecko.com/api/v3/search/trending", headers=headers, timeout=5)
             if res_cg.status_code == 200:
                 coins = res_cg.json().get("coins", [])
                 for c in coins[:5]:
@@ -1480,7 +1480,7 @@ if current_data and len(current_data) > 0:
                         f"#### <img src='{logo_url}' width='22' style='vertical-align: middle; margin-right: 6px;'> {coin} ({symbol})",
                         unsafe_allow_html=True,
                     )
-                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{price:,.2f} €</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{price:,.3f} €</div>", unsafe_allow_html=True)
                 
                 with col2:
                     st.markdown(
@@ -1524,9 +1524,9 @@ if current_data and len(current_data) > 0:
 
                     st.write("---")
                     st.markdown("##### 🛡️ ATR Risikomanagement")
-                    st.write(f"• **ATR (14):** {atr_value:,.2f} €")
-                    st.write(f"• 🛑 **Stop-Loss:** **{stop_loss:,.2f} €**")
-                    st.write(f"• 🎯 **Take-Profit:** **{take_profit:,.2f} €**")
+                    st.write(f"• **ATR (14):** {atr_value:,.3f} €")
+                    st.write(f"• 🛑 **Stop-Loss:** **{stop_loss:,.3f} €**")
+                    st.write(f"• 🎯 **Take-Profit:** **{take_profit:,.3f} €**")
 
                     st.write("---")
                     st.markdown("##### 📊 Signal-Zusammensetzung Score")
@@ -1571,7 +1571,7 @@ if current_data and len(current_data) > 0:
 
                     if hist_price > 0:
                         st.markdown(
-                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.2f} €** | Aktuell: **{price:,.2f} €**",
+                            f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{hist_price:,.3f} €** | Aktuell: **{price:,.3f} €**",
                             unsafe_allow_html=True,
                         )
 
@@ -1593,7 +1593,10 @@ if current_data and len(current_data) > 0:
                         else:
                             date_format = "%b %y"
 
-                        y_format = ",.2f" if max_p < 10 else ",.0f"
+                        if max_p < 10:
+                            y_format = ".3f"
+                        else:
+                            y_format = ",.0f"
 
                         base = alt.Chart(df_chart).encode(
                             x=alt.X(
@@ -1633,7 +1636,7 @@ if current_data and len(current_data) > 0:
                         points = base.mark_point(size=40, color=chart_color, filled=True).encode(
                             tooltip=[
                                 alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"),
-                                alt.Tooltip("Kurs:Q", title="Kurs", format=",.2f €"),
+                                alt.Tooltip("Kurs:Q", title="Kurs", format=".3f" if max_p < 10 else ",.2f"),
                             ]
                         )
 
@@ -1795,8 +1798,8 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         "Coin": c_name,
                         "Horizon": horizon,
                         "Signal": signal_damals,
-                        "Kurs Damals": f"{kurs_damals:,.2f} €",
-                        "Aktuell": f"{kurs_aktuell:,.2f} €",
+                        "Kurs Damals": f"{kurs_damals:,.3f} €",
+                        "Aktuell": f"{kurs_aktuell:,.3f} €",
                         "Diff (%)": round(diff_pct, 2),
                         "Auswertung": evaluation,
                     })
