@@ -133,7 +133,7 @@ def save_and_commit_csv(file_path, df, force_commit=False):
                 "Authorization": f"token {github_token}",
                 "Accept": "application/vnd.github.v3+json",
             }
-            # SHA der existierenden Datei abfragen
+            # SHA der existierenden Datei abfragen (erforderlich für GitHub-Update)
             res = requests.get(url, headers=headers, timeout=5)
             sha = res.json().get("sha") if res.status_code == 200 else None
             
@@ -149,7 +149,7 @@ def save_and_commit_csv(file_path, df, force_commit=False):
                 
             put_res = requests.put(url, headers=headers, json=payload, timeout=5)
             if put_res.status_code in [200, 201]:
-                st.session_state[last_commit_key] = now
+                st.session_state[last_commit_key] = now  # Zeitstempel aktualisieren
                 st.toast(f"☁️ {file_path} erfolgreich auf GitHub gesichert!", icon="✅")
         except Exception:
             pass
@@ -294,7 +294,7 @@ def get_vix_and_nasdaq():
     return data
 
 
-# 5. MULTI-SOURCE NACHRICHTEN & SENTIMENT-ANALYSE (CryptoCompare, CoinTelegraph, CoinDesk, CoinGecko)
+# 5. MULTI-SOURCE NACHRICHTEN & MAKRO-SENTIMENT (Google News Finanzen, Yahoo Finance, CoinTelegraph, CoinDesk)
 @st.cache_data(ttl=300)
 def get_news_sentiment_score():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -305,35 +305,51 @@ def get_news_sentiment_score():
         "rate cut", "fed cuts", "ecb cuts", "approval", "bullish", "inflow",
         "adoption", "stimulus", "easing", "rate cuts", "lower rates", "dovish",
         "fed rate cut", "soft landing", "gdp growth", "rally", "gain", "soar",
-        "breakout", "record high", "etf approval", "surge"
+        "breakout", "record high", "etf approval", "surge", "wall street gain"
     ]
     bearish_keywords = [
         "rate hike", "inflation high", "recession", "sec lawsuit", "ban",
         "crackdown", "outflow", "dump", "tariff", "rate hikes", "higher rates",
         "hawkish", "fed rate hike", "stagflation", "cpi surge", "drop", "plunge",
-        "hack", "exploit", "crash", "liquidation"
+        "hack", "exploit", "crash", "liquidation", "wall street fall"
     ]
 
-    # Q1: CryptoCompare API
+    # QUELLE 1: Google News Finanzen & Makro-Feeds (Suche nach Zinsen, Bitcoin & Wall Street)
     try:
-        url_cc = "https://min-api.cryptocompare.com/data/v2/news/?lang=EN"
-        res_cc = requests.get(url_cc, headers=headers, timeout=4)
-        if res_cc.status_code == 200:
-            data_cc = res_cc.json()
-            if isinstance(data_cc, dict) and data_cc.get("Response") == "Success":
-                for art in data_cc.get("Data", [])[:10]:
-                    t = art.get("title", "").strip()
-                    if t and t not in headlines:
-                        headlines.append(t)
+        gn_url = "https://news.google.com/rss/search?q=bitcoin+OR+crypto+OR+%22fed+rate%22+OR+wallstreet&hl=en-US&gl=US&ceid=US:en"
+        res_gn = requests.get(gn_url, headers=headers, timeout=4)
+        if res_gn.status_code == 200:
+            root = ET.fromstring(res_gn.text)
+            for item in root.findall(".//item")[:8]:
+                t = item.find("title")
+                if t is not None and t.text:
+                    t_clean = t.text.split(" - ")[0].strip()
+                    if t_clean and t_clean not in headlines:
+                        headlines.append(t_clean)
     except Exception:
         pass
 
-    # Q2: CoinTelegraph RSS
+    # QUELLE 2: Yahoo Finance Stock Market / Crypto RSS
+    try:
+        yf_url = "https://finance.yahoo.com/news/rssindex"
+        res_yf = requests.get(yf_url, headers=headers, timeout=4)
+        if res_yf.status_code == 200:
+            root = ET.fromstring(res_yf.text)
+            for item in root.findall(".//item")[:8]:
+                t = item.find("title")
+                if t is not None and t.text:
+                    t_text = t.text.strip()
+                    if t_text and t_text not in headlines:
+                        headlines.append(t_text)
+    except Exception:
+        pass
+
+    # QUELLE 3: CoinTelegraph RSS
     try:
         res_ct = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
         if res_ct.status_code == 200:
             root = ET.fromstring(res_ct.text)
-            for item in root.findall(".//item")[:10]:
+            for item in root.findall(".//item")[:8]:
                 t = item.find("title")
                 if t is not None and t.text:
                     t_text = t.text.strip()
@@ -342,12 +358,12 @@ def get_news_sentiment_score():
     except Exception:
         pass
 
-    # Q3: CoinDesk RSS
+    # QUELLE 4: CoinDesk RSS
     try:
         res_cd = requests.get("https://www.coindesk.com/arc/outboundfeeds/rss/", headers=headers, timeout=4)
         if res_cd.status_code == 200:
             root = ET.fromstring(res_cd.text)
-            for item in root.findall(".//item")[:10]:
+            for item in root.findall(".//item")[:8]:
                 t = item.find("title")
                 if t is not None and t.text:
                     t_text = t.text.strip()
@@ -356,19 +372,7 @@ def get_news_sentiment_score():
     except Exception:
         pass
 
-    # Q4: CoinGecko API
-    try:
-        res_cg = requests.get("https://api.coingecko.com/api/v3/news", headers=headers, timeout=4)
-        if res_cg.status_code == 200:
-            data_cg = res_cg.json().get("data", [])
-            for item in data_cg[:10]:
-                t = item.get("title", "").strip()
-                if t and t not in headlines:
-                    headlines.append(t)
-    except Exception:
-        pass
-
-    # Auswertung aller gesammelten Schlagzeilen
+    # Sentiment-Auswertung über alle gesammelten Schlagzeilen
     for h in headlines:
         text_lower = h.lower()
         for word in bullish_keywords:
@@ -1729,7 +1733,6 @@ with st.container(border=True):
             bt_text = "📈 Steigend" if bond_change > 0 else "📉 Fallend"
             st.write(f"🏛 **US-10J Zins:** {bond_val:.2f}% ({bond_change:+.2f}%) | {bt_text}")
 
-        # Farbcodes für reines HTML (Grün / Rot)
         dxy_color = "#2ecc71" if ext_macro.get("dxy_chg", 0) >= 0 else "#e74c3c"
         eur_color = "#2ecc71" if ext_macro.get("eurusd_chg", 0) >= 0 else "#e74c3c"
         jpy_color = "#2ecc71" if ext_macro.get("usdjpy_chg", 0) >= 0 else "#e74c3c"
@@ -1788,7 +1791,7 @@ with st.container(border=True):
         st.write("---")
         st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
         if top_headlines:
-            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (Multi-Source Feeds):")
+            st.caption("Aktuelle Makro- & Krypto-Schlagzeilen (Google News, Yahoo Finance, Wall Street Feeds):")
             for h in top_headlines:
                 st.markdown(f"- *{h}*")
 
@@ -1952,7 +1955,7 @@ with st.expander("📊 **Historisches Makro- & Stimmungsdaten-Archiv**", expande
                             )
                         df_market_log[col] = pd.to_numeric(df_market_log[col], errors="coerce")
 
-                # FEHLENDE HISTORISCHE WERTE MIT FORWARD/BACKWARD FILL SAUBER ERGÄNZEN
+                # FEHLENDE HISTORISCHE WERTE MIT FORWARD/BACKWARD FILL ERGÄNZEN
                 df_market_log[num_cols] = df_market_log[num_cols].ffill().bfill()
 
                 df_chart_data = df_market_log.sort_values(by="ParsedDate", ascending=True).dropna(subset=["ParsedDate"])
