@@ -258,7 +258,7 @@ def get_macro_bond_yield():
 @st.cache_data(ttl=60)
 def get_extended_macro_data():
     data = {}
-    tickers = {"dxy": "DX-Y.NYB", "eurusd": "EURUSD=X", "usdjpy": "JPY=X", "gold": "GC=F", "silver": "SI=F", "oil": "CL=F", "dow": "^DJI", "ftse": "^FTSE", "sse": "000001.SS"}
+    tickers = {"dxy": "DX-Y.NYB", "eurusd": "EURUSD=X", "usdjpy": "JPY=X", "gold": "GC=F", "silver": "SI=F", "oil": "CL=F"}
     for key, sym in tickers.items():
         try:
             h = yf.Ticker(sym).history(period="5d")
@@ -483,9 +483,22 @@ def generate_signal(perf_val, fg_value, bond_change, etf_net_flow, vix_data, new
     elif perf_val >= t_ms: return "VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: {format_ger(perf_val, force_sign=True)}%).", scores
     else: return "HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, force_sign=True)}%).", scores
 
+# --- COOLDOWN LOGGING (Verhindert 0% Spam) ---
 def save_and_commit_csv_simple(file_path, new_row):
     try:
-        df = pd.read_csv(file_path) if os.path.exists(file_path) else pd.DataFrame()
+        if os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            if not df.empty and "Coin" in df.columns and "Datum" in df.columns:
+                last_coin_entry = df[df["Coin"] == new_row["Coin"]].tail(1)
+                if not last_coin_entry.empty:
+                    last_time = datetime.strptime(last_coin_entry.iloc[0]["Datum"], "%Y-%m-%d %H:%M:%S")
+                    now_time = datetime.strptime(new_row["Datum"], "%Y-%m-%d %H:%M:%S")
+                    # Nur alle 4 Stunden einen Log-Eintrag zulassen (14400 Sekunden)
+                    if (now_time - last_time).total_seconds() < 14400:
+                        return
+        else:
+            df = pd.DataFrame()
+            
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         df.to_csv(file_path, index=False)
     except: pass
@@ -665,9 +678,12 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**"):
                     
                     if "KAUF" in str(row.get("Signal", "")).upper(): sim_sig *= 1.0 + (max(-5.0, min(5.0, diff)) / 100.0)
                     sim_hold *= 1.0 + (diff / 100.0)
-                    dt_str = row["ParsedDate"].strftime("%d.%m.%Y %H:%M") if pd.notnull(row["ParsedDate"]) else str(row["Datum"])
                     
-                    bt_data.append({"Datum": dt_str, "App-Strategie": sim_sig, "Buy & Hold": sim_hold})
+                    # WICHTIG: Das Datumsobjekt für Altair erhalten
+                    dt_obj = row["ParsedDate"] if pd.notnull(row["ParsedDate"]) else pd.to_datetime(row["Datum"])
+                    dt_str = dt_obj.strftime("%d.%m.%Y %H:%M")
+                    
+                    bt_data.append({"Datum": dt_obj, "App-Strategie": sim_sig, "Buy & Hold": sim_hold})
                     rows.append({
                         "Datum": dt_str, "Coin": c_n, "Signal": str(row.get("Signal", "")),
                         "Damals": f"{format_ger(kd, 4 if kd < 1 else 2)} €", "Aktuell": f"{format_ger(ka, 4 if ka < 1 else 2)} €",
@@ -679,8 +695,10 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**"):
                 
                 df_bt = pd.DataFrame(bt_data)
                 if not df_bt.empty:
+                    # 'Datum:T' sorgt dafür, dass Altair es als Zeitachse liest, nicht als zerquetschten String
                     chart_bt = alt.Chart(df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")).mark_line(strokeWidth=2).encode(
-                        x=alt.X("Datum:N", title=None, sort=None), y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)),
+                        x=alt.X("Datum:T", title=None),
+                        y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)),
                         color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"]))
                     ).properties(height=220)
                     st.altair_chart(chart_bt.interactive(), use_container_width=True)
