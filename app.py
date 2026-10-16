@@ -32,7 +32,271 @@ CRYPTO_LOGOS = {
 }
 
 # --- HILFSFUNKTION: DEUTSCHE ZAHLENFORMATIERUNG ---
+def format_ger(value, decimals=2, force_sign=False):import base64
+from datetime import datetime, timedelta
+import os
+import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
+import altair as alt
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+import yfinance as yf
+
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
+CRYPTO_SYMBOLS = {"Bitcoin": "₿", "Ethereum": "Ξ", "Solana": "◎", "Cardano": "₳", "Bitcoin Cash": "₿"}
+CRYPTO_LOGOS = {
+    "Bitcoin": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+    "Ethereum": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+    "Solana": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+    "Cardano": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+    "Bitcoin Cash": "https://assets.coingecko.com/coins/images/780/small/bitcoin-cash-circle.png",
+}
+LOG_FILE, IMP_FILE, MARKET_LOG_FILE = "prediction_log.csv", "improvements_log.csv", "market_data_log.csv"
+
 def format_ger(value, decimals=2, force_sign=False):
+    if value is None: return "0,00"
+    try:
+        val = float(value)
+        fmt = f"{val:+,.{decimals}f}" if force_sign else f"{val:,.{decimals}f}"
+        return fmt.replace(",", "X").replace(".", ",").replace("X", ".")
+    except: return str(value)
+
+st.set_page_config(page_title="Krypto-Kompass", page_icon="🪙", layout="centered")
+st.markdown("<style>#MainMenu, footer, header {visibility: hidden;} .block-container{padding:1rem 0.8rem!important;}</style>", unsafe_allow_html=True)
+
+if "authenticated" not in st.session_state: st.session_state.authenticated = False
+if not st.session_state.authenticated:
+    st.markdown("## 🔒 Krypto-Kompass — Zugangsschutz")
+    pwd = st.text_input("Passwort:", type="password")
+    if st.button("Anmelden", use_container_width=True):
+        if pwd == st.secrets.get("APP_PASSWORD", "MeinGeheimesPasswort123"):
+            st.session_state.authenticated = True; st.rerun()
+        else: st.error("❌ Falsches Passwort!")
+    st.stop()
+
+col_t, col_b = st.columns([2, 1])
+col_t.markdown("### 🪙 Krypto-Kompass")
+if col_b.button("🔄 Aktualisieren", use_container_width=True): st.cache_data.clear(); st.rerun()
+st.caption(f"Letztes Update: {datetime.now(BERLIN_TZ).strftime('%d.%m.%Y %H:%M:%S')}")
+
+def save_csv(path, row):
+    try:
+        df = pd.read_csv(path) if os.path.exists(path) else pd.DataFrame()
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        df.to_csv(path, index=False)
+    except: pass
+
+@st.cache_data(ttl=30)
+def get_current_data():
+    coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+    data = {}
+    try:
+        res = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=4)
+        if res.status_code == 200:
+            d = {i["symbol"]: i for i in res.json() if "symbol" in i}
+            for n, s in coins.items():
+                if s in d: data[n] = {"eur": float(d[s]["lastPrice"]), "eur_24h_change": float(d[s]["priceChangePercent"]), "volume": float(d[s]["quoteVolume"])}
+    except: pass
+    return data if data else None
+
+@st.cache_data(ttl=300)
+def get_real_spot_etf_flows():
+    try:
+        res = requests.get("https://fapi.coinglass.com/api/etf/flow", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        if res.status_code == 200:
+            d = res.json().get("data", [])
+            if d: return round(float(d[-1].get("totalNetInflow", d[-1].get("totalNetFlow", 0))), 2)
+    except: pass
+    return 0.0
+
+@st.cache_data(ttl=120)
+def get_fear_and_greed():
+    try:
+        res = requests.get("https://api.alternative.me/fng/?limit=1", timeout=5)
+        if res.status_code == 200: d = res.json()["data"][0]; return int(d["value"]), d["value_classification"]
+    except: pass
+    return 50, "Neutral"
+
+@st.cache_data(ttl=600)
+def get_news_and_macro():
+    headlines = []
+    try:
+        res = requests.get("https://cointelegraph.com/rss", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        if res.status_code == 200:
+            for item in ET.fromstring(res.text).findall(".//item")[:5]:
+                if item.find("title") is not None: headlines.append(item.find("title").text.strip())
+    except: pass
+    if not headlines: headlines = ["Makro-Lage stabilisiert sich", "Spot-ETF Volumina steigen"]
+    pts = 25
+    for h in headlines:
+        lh = h.lower()
+        if any(w in lh for w in ["bull", "cut", "rally", "gain", "up", "high", "growth", "buy"]): pts += 20
+        if any(w in lh for w in ["bear", "hike", "drop", "fall", "down", "low", "crash", "sell"]): pts -= 20
+    return max(-100, min(100, pts)), headlines[:5]
+
+@st.cache_data(ttl=300)
+def get_defillama():
+    res_data = {"stablecoin_mcap_b": 135.0, "global_tvl_b": 85.0}
+    try:
+        r = requests.get("https://stablecoins.llama.fi/stablecoins?includePrices=true", timeout=5)
+        if r.status_code == 200:
+            d = r.json().get("peggedAssets", [])
+            usdt = next((i for i in d if i.get("symbol") == "USDT"), {}).get("circulating", {}).get("peggedUSD", 0)
+            usdc = next((i for i in d if i.get("symbol") == "USDC"), {}).get("circulating", {}).get("peggedUSD", 0)
+            res_data["stablecoin_mcap_b"] = round((usdt + usdc) / 1e9, 2)
+        tvl = requests.get("https://api.llama.fi/v2/chains", timeout=5)
+        if tvl.status_code == 200: res_data["global_tvl_b"] = round(sum(c.get("tvl", 0) for c in tvl.json()) / 1e9, 2)
+    except: pass
+    return res_data
+
+@st.cache_data(ttl=60)
+def get_vix_and_indices():
+    data = {"vix_val": 18.0, "vix_chg": 0.0, "dxy_val": 103.0, "dxy_chg": 0.0, "gold_val": 2300.0, "gold_chg": 0.0}
+    try:
+        v = yf.Ticker("^VIX").history(period="5d")
+        if not v.empty: data["vix_val"], data["vix_chg"] = float(v["Close"].iloc[-1]), float(((v["Close"].iloc[-1]-v["Close"].iloc[0])/v["Close"].iloc[0])*100)
+        dx = yf.Ticker("DX-Y.NYB").history(period="5d")
+        if not dx.empty: data["dxy_val"], data["dxy_chg"] = float(dx["Close"].iloc[-1]), float(((dx["Close"].iloc[-1]-dx["Close"].iloc[0])/dx["Close"].iloc[0])*100)
+        g = yf.Ticker("GC=F").history(period="5d")
+        if not g.empty: data["gold_val"], data["gold_chg"] = float(g["Close"].iloc[-1]), float(((g["Close"].iloc[-1]-g["Close"].iloc[0])/g["Close"].iloc[0])*100)
+    except: pass
+    return data
+
+@st.cache_data(ttl=30)
+def get_history(symbol, limit, interval, weekly=False):
+    try:
+        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}", timeout=4)
+        if res.status_code == 200:
+            raw = res.json()
+            if raw:
+                dates = [pd.to_datetime(e[0], unit='ms').tz_localize('UTC').tz_convert(BERLIN_TZ).tz_localize(None) for e in raw]
+                df = pd.DataFrame({"Timestamp": dates, "Kurs": [float(e[4]) for e in raw]}).set_index("Timestamp")
+                return df.resample("W").mean().dropna() if weekly else df.sort_index()
+    except: pass
+    return None
+
+@st.cache_data(ttl=30)
+def calculate_atr(symbol):
+    try:
+        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=30", timeout=3)
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json(), columns=["ot", "o", "high", "low", "close", "v", "ct", "qav", "nt", "tbb", "tbq", "i"])
+            df[["high", "low", "close"]] = df[["high", "low", "close"]].astype(float)
+            tr = pd.concat([df["high"] - df["low"], abs(df["high"] - df["close"].shift(1)), abs(df["low"] - df["close"].shift(1))], axis=1).max(axis=1)
+            return float(tr.rolling(14).mean().iloc[-1])
+    except: pass
+    return 0.0
+
+@st.cache_data(ttl=30)
+def get_rsi(symbol):
+    try:
+        res = requests.get(f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=30", timeout=3)
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json(), columns=["ot", "o", "h", "l", "close", "v", "ct", "qav", "nt", "tbb", "tbq", "i"])
+            delta = df["close"].astype(float).diff()
+            rs = delta.clip(lower=0).rolling(14).mean() / -delta.clip(upper=0).rolling(14).mean()
+            return round(float(100 - (100 / (1 + rs)).iloc[-1]), 2)
+    except: pass
+    return 50.0
+
+def generate_signal(perf, fg):
+    scores = {"Trend": 80 if perf <= -7 else (-80 if perf >= 7 else 0), "Sentiment": 90 if fg <= 25 else (-90 if fg >= 75 else (50 - fg))}
+    if perf <= -5: return "KAUFEN 🟢", f"Rücksetzer ({format_ger(perf, force_sign=True)}%)", scores
+    elif perf >= 5: return "VORSICHT 🔴", f"Zuwachs ({format_ger(perf, force_sign=True)}%)", scores
+    return "HALTEN 🟡", f"Seitwärts ({format_ger(perf, force_sign=True)}%)", scores
+
+# --- DATEN LADEN ---
+fg_val, fg_txt = get_fear_and_greed()
+etf_flow = get_real_spot_etf_flows()
+news_score, headlines = get_news_and_macro()
+vix_data = get_vix_and_indices()
+llama = get_defillama()
+current_data = get_current_data()
+
+with st.expander("⚙️ **Einstellungen & Tranchen-Planung**", expanded=False):
+    zeitraum = st.selectbox("Zeitraum:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage"], index=1)
+    budget = st.number_input("Budget (€):", 50.0, 5000.0, 1000.0, step=50.0)
+    auswahl = st.multiselect("Coins:", list(CRYPTO_SYMBOLS.keys()), default=list(CRYPTO_SYMBOLS.keys()))
+    if st.checkbox("🔄 Auto-Refresh (5 Min.)", value=True): st_autorefresh(interval=300000)
+
+limit_n, interval, weekly = (24, "1h", False) if zeitraum == "24 Stunden" else (7, "1d", False) if zeitraum == "7 Tage" else (30, "1d", False)
+
+if current_data and auswahl:
+    results = {}
+    for coin in auswahl:
+        sym_binance = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}[coin]
+        vals = current_data.get(coin, {})
+        price, vol = vals.get("eur", 0), vals.get("volume", 0)
+        atr, rsi = calculate_atr(sym_binance), get_rsi(sym_binance)
+        df_h = get_history(sym_binance, limit_n, interval, weekly)
+        hist_p = df_h.iloc[0]["Kurs"] if df_h is not None and not df_h.empty else price
+        perf = ((price - hist_p) / hist_p) * 100 if hist_p > 0 else 0.0
+        sig, msg, scores = generate_signal(perf, fg_val)
+        
+        save_csv(LOG_FILE, {"Datum": datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S"), "Coin": coin, "Kurs_Damals": price, "Signal": sig.split()[0], "FearGreed": fg_val})
+        results[coin] = {"price": price, "atr": atr, "rsi": rsi, "perf": perf, "sig": sig, "msg": msg, "scores": scores, "df": df_h, "sym": CRYPTO_SYMBOLS[coin], "logo": CRYPTO_LOGOS[coin]}
+
+    # Portfolio Allokation
+    tot_w = sum(1.0 if "KAUFEN" in r["sig"] else 0.0 for r in results.values())
+    tot_inv = 0.0
+    for r in results.values():
+        w = 1.0 if "KAUFEN" in r["sig"] else 0.0
+        r["inv"] = round(budget * (w / max(1.0, tot_w)), 2)
+        tot_inv += r["inv"]
+    cash = max(0.0, round(budget - tot_inv, 2))
+
+    st.markdown("💼 **Portfolio-Tranche:**")
+    cp1, cp2, cp3 = st.columns(3)
+    cp1.metric("Gesamt", f"{format_ger(budget)} €")
+    cp2.metric("Krypto", f"{format_ger(tot_inv)} €")
+    cp3.metric("Cash", f"{format_ger(cash)} €")
+
+    st.markdown("### 🪙 Kryptowährungen")
+    for coin, r in results.items():
+        p_dec = 4 if r["price"] < 1 else 2
+        bg_col = "rgba(46, 204, 113, 0.12)" if r["perf"] >= 0 else "rgba(231, 76, 60, 0.12)"
+        f_col = "#2ecc71" if r["perf"] >= 0 else "#e74c3c"
+
+        with st.container(border=True):
+            col1, col2 = st.columns([1.2, 1])
+            col1.markdown(f"#### <img src='{r['logo']}' width='22' style='vertical-align: middle;'> {coin} ({r['sym']})", unsafe_allow_html=True)
+            col1.markdown(f"<div style='font-size: 1.35rem; font-weight: bold;'>{format_ger(r['price'], p_dec)} €</div>", unsafe_allow_html=True)
+            col2.markdown(f"<div style='text-align:right;'><span style='background-color:{bg_col}; color:{f_col}; font-weight:bold; padding:4px 10px; border-radius:8px;'>{format_ger(r['perf'], 2, force_sign=True)}%</span></div>", unsafe_allow_html=True)
+
+            st.write("---")
+            cs1, cs2 = st.columns(2)
+            cs1.markdown(f"**Signal:** {r['sig']}")
+            cs2.markdown(f"**Tranche:** **{format_ger(r['inv'])} €**")
+
+            with st.expander("🔍 **Details, Analyse & Chart**"):
+                st.info(f"💡 {r['msg']}")
+                st.caption(f"🏛 ETF: {format_ger(etf_flow, force_sign=True)}M $ | 📊 RSI: {format_ger(r['rsi'], 1)} | 📰 News: {news_score}/100")
+                st.markdown(f"🛡️ **SL:** {format_ger(max(0.0, r['price'] - 2*r['atr']), p_dec)} € | **TP:** {format_ger(r['price'] + 3*r['atr'], p_dec)} €")
+                
+                if r["df"] is not None and not r["df"].empty:
+                    chart = alt.Chart(r["df"].reset_index()).mark_line(color=f_col, strokeWidth=2).encode(x="Timestamp:T", y="Kurs:Q").properties(height=180)
+                    st.altair_chart(chart.interactive(), use_container_width=True)
+
+st.write("---")
+with st.container(border=True):
+    st.markdown(f"📊 **Sentiment-Index:** **{fg_val} / 100** ({fg_txt})")
+    with st.expander("🌐 **Globale Leitmärkte & Makro**"):
+        st.markdown(f"💵 **DXY:** {format_ger(vix_data['dxy_val'])} | 🥇 **Gold:** {format_ger(vix_data['gold_val'])} $ | 📉 **VIX:** {format_ger(vix_data['vix_val'])}")
+        st.write("📰 **Schlagzeilen:**")
+        for h in headlines: st.caption(f"- {h}")
+
+with st.expander("🧠 **Backtest & Selbstlern-System**"):
+    if os.path.exists(LOG_FILE):
+        df_log = pd.read_csv(LOG_FILE)
+        st.dataframe(df_log.tail(10), use_container_width=True)
+        with open(LOG_FILE, "rb") as f:
+            st.download_button("📥 Log herunterladen", f, file_name="prediction_log.csv", mime="text/csv")
+
+st.markdown("---")
+st.caption("⚠️ **Disclaimer:** Keine Anlageberatung.")
     """Formatiert Zahlen ins deutsche Format (z.B. 73.195,22 statt 73195.22)"""
     if value is None:
         return "0,00"
