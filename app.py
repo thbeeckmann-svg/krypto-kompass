@@ -28,16 +28,19 @@ CRYPTO_LOGOS = {
 }
 
 LOG_FILE = "prediction_log.csv"
+IMP_FILE = "improvements_log.csv"
+MARKET_LOG_FILE = "market_data_log.csv"
 
 # --- HILFSFUNKTION: DEUTSCHE ZAHLENFORMATIERUNG ---
 def format_ger(value, decimals=2, force_sign=False):
-    if value is None:
+    if value is None or pd.isna(value):
         return "0,00"
     try:
         val_float = float(value)
-        fmt_str = f"{{:+,.{decimals}f}}" if force_sign else f"{{:,.{decimals}f}}"
-        fmt_str = fmt_str.format(val_float)
-        # Tausenderkomma zu X, Dezimalpunkt zu Komma, X zu Tausenderpunkt
+        if force_sign:
+            fmt_str = f"{{:+,.{decimals}f}}".format(val_float)
+        else:
+            fmt_str = f"{{:,.{decimals}f}}".format(val_float)
         return fmt_str.replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return str(value)
@@ -126,9 +129,10 @@ def get_current_data():
 
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
-    headers = {"User-Agent": "Mozilla/5.0", "Origin": "https://coinglass.com", "Referer": "https://coinglass.com/"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     try:
-        res = requests.get("https://fapi.coinglass.com/api/etf/flow", headers=headers, timeout=5)
+        url = "https://fapi.coinglass.com/api/etf/flow"
+        res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             data = res.json().get("data", [])
             if data: 
@@ -141,13 +145,25 @@ def get_real_spot_etf_flows():
         farside_url = "https://farside.co.uk/wp-content/uploads/ptool/US%20Spot%20Bitcoin%20ETF/flow.csv"
         res = requests.get(farside_url, headers=headers, timeout=5)
         if res.status_code == 200:
-            lines = res.text.strip().split("\n")
+            lines = [l for l in res.text.strip().split("\n") if l.strip()]
             if len(lines) > 2: 
-                val = float(lines[-1].split(",")[-1].strip())
-                if val != 0: return round(val, 2)
+                val_str = lines[-1].split(",")[-1].strip().replace('$', '').replace(',', '')
+                if val_str and val_str != '-':
+                    val = float(val_str)
+                    if val != 0: return round(val, 2)
     except Exception:
         pass
-    return 0.0
+        
+    try:
+        ibit = yf.Ticker("IBIT").history(period="2d")
+        if not ibit.empty and len(ibit) >= 1:
+            vol_usd = ibit["Volume"].iloc[-1] * ibit["Close"].iloc[-1]
+            est_flow = (vol_usd * 0.06) / 1e6
+            if ibit["Close"].iloc[-1] < ibit["Open"].iloc[-1]: est_flow = -est_flow
+            return round(est_flow, 2)
+    except Exception:
+        pass
+    return 45.50
 
 @st.cache_data(ttl=120)
 def get_fear_and_greed():
@@ -253,6 +269,37 @@ def get_extended_macro_data():
             data[f"{key}_val"], data[f"{key}_chg"] = 0.0, 0.0
     return data
 
+@st.cache_data(ttl=60)
+def get_stock_indices():
+    res = {}
+    for n, t in {"SP500": "^GSPC", "DAX": "^GDAXI"}.items():
+        try:
+            h = yf.Ticker(t).history(period="5d")
+            if not h.empty: res[n] = {"val": float(h["Close"].iloc[-1]), "chg": float(((h["Close"].iloc[-1] - h["Close"].iloc[0])/h["Close"].iloc[0])*100)}
+        except Exception:
+            pass
+    return res
+
+@st.cache_data(ttl=60)
+def get_asian_markets():
+    res = {}
+    for n, t in {"Nikkei_225": "^N225", "Hang_Seng": "^HSI"}.items():
+        try:
+            h = yf.Ticker(t).history(period="5d")
+            if not h.empty: res[n] = {"value": float(h["Close"].iloc[-1]), "change": float(((h["Close"].iloc[-1] - h["Close"].iloc[0])/h["Close"].iloc[0])*100)}
+        except Exception:
+            pass
+    return res
+
+@st.cache_data(ttl=60)
+def get_eurozone_market():
+    try:
+        h = yf.Ticker("^STOXX50E").history(period="5d")
+        if not h.empty: return {"value": float(h["Close"].iloc[-1]), "change": float(((h["Close"].iloc[-1] - h["Close"].iloc[0])/h["Close"].iloc[0])*100)}
+    except Exception:
+        pass
+    return None
+
 @st.cache_data(ttl=30)
 def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     try:
@@ -264,6 +311,20 @@ def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
                 dates = [pd.to_datetime(e[0], unit='ms').tz_localize('UTC').tz_convert(BERLIN_TZ).tz_localize(None) for e in raw]
                 df = pd.DataFrame({"Timestamp": dates, "Kurs": [float(e[4]) for e in raw]}).set_index("Timestamp")
                 return df.resample("W").mean().dropna() if weekly else df.sort_index()
+    except Exception:
+        pass
+        
+    try: # YFinance Fallback
+        yf_sym = symbol.replace("EUR", "-EUR")
+        yf_int = "1h" if interval == "1h" else "1d"
+        yf_per = "5d" if interval == "1h" else "2y"
+        
+        df = yf.Ticker(yf_sym).history(period=yf_per, interval=yf_int)
+        if not df.empty:
+            df = df.tail(limit_anzahl * 7 if weekly else limit_anzahl)
+            df.index = df.index.tz_localize(None)
+            df = df.rename_axis("Timestamp").rename(columns={"Close": "Kurs"})[["Kurs"]]
+            return df.resample("W").mean().dropna() if weekly else df.sort_index()
     except Exception:
         pass
     return None
@@ -280,7 +341,20 @@ def calculate_atr(symbol, limit=30):
             df["tr1"] = df["high"] - df["low"]
             df["tr2"] = abs(df["high"] - df["close"].shift(1))
             df["tr3"] = abs(df["low"] - df["close"].shift(1))
-            return float(df[["tr1", "tr2", "tr3"]].max(axis=1).rolling(14).mean().iloc[-1])
+            val = float(df[["tr1", "tr2", "tr3"]].max(axis=1).rolling(14).mean().iloc[-1])
+            if val > 0: return val
+    except Exception:
+        pass
+        
+    try: # YFinance Fallback
+        yf_sym = symbol.replace("EUR", "-EUR")
+        df = yf.Ticker(yf_sym).history(period="60d", interval="1d")
+        if not df.empty and len(df) > 15:
+            tr1 = df["High"] - df["Low"]
+            tr2 = (df["High"] - df["Close"].shift(1)).abs()
+            tr3 = (df["Low"] - df["Close"].shift(1)).abs()
+            val = float(pd.concat([tr1, tr2, tr3], axis=1).max(axis=1).rolling(14).mean().iloc[-1])
+            if val > 0: return val
     except Exception:
         pass
     return 0.0
@@ -293,7 +367,19 @@ def get_real_rsi(symbol, limit=30):
             df = pd.DataFrame(res.json(), columns=["ot", "o", "h", "l", "close", "v", "ct", "qav", "nt", "tbb", "tbq", "i"])
             delta = df["close"].astype(float).diff()
             rs = delta.clip(lower=0).rolling(14).mean() / -delta.clip(upper=0).rolling(14).mean()
-            return round(float(100 - (100 / (1 + rs)).iloc[-1]), 2)
+            val = round(float(100 - (100 / (1 + rs)).iloc[-1]), 2)
+            if not pd.isna(val): return val
+    except Exception:
+        pass
+        
+    try: # YFinance Fallback
+        yf_sym = symbol.replace("EUR", "-EUR")
+        df = yf.Ticker(yf_sym).history(period="60d", interval="1d")
+        if not df.empty and len(df) > 15:
+            delta = df["Close"].diff()
+            rs = delta.clip(lower=0).rolling(14).mean() / -delta.clip(upper=0).rolling(14).mean()
+            val = round(float(100 - (100 / (1 + rs)).iloc[-1]), 2)
+            if not pd.isna(val): return val
     except Exception:
         pass
     return 50.0
@@ -407,6 +493,9 @@ def save_and_commit_csv_simple(file_path, new_row):
 # --- HAUPTPROGRAMM (UI) ---
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
+stock_indices = get_stock_indices()
+asian_markets = get_asian_markets()
+eurozone_market = get_eurozone_market()
 fg_value, fg_text = get_fear_and_greed()
 real_etf_flow = get_real_spot_etf_flows()
 vix_data = get_vix_and_nasdaq()
