@@ -310,7 +310,7 @@ def translate_to_german(text):
 @st.cache_data(ttl=120)
 def get_news_sentiment_score():
     headers = {"User-Agent": "Mozilla/5.0"}
-    headlines = []
+    news_items = []
     sentiment_points = 25
 
     try:
@@ -319,40 +319,45 @@ def get_news_sentiment_score():
             root = ET.fromstring(res.text)
             for item in root.findall(".//item")[:5]:
                 title_elem = item.find("title")
+                link_elem = item.find("link")
                 if title_elem is not None and title_elem.text:
-                    headlines.append(title_elem.text.strip())
+                    title = title_elem.text.strip()
+                    link = link_elem.text.strip() if link_elem is not None and link_elem.text else "https://cointelegraph.com"
+                    news_items.append((title, link))
     except: pass
 
-    if len(headlines) < 3:
+    if len(news_items) < 3:
         try:
             res = requests.get("https://www.coindesk.com/arc/outbound-feeds/rss/", headers=headers, timeout=4)
             if res.status_code == 200:
                 root = ET.fromstring(res.text)
                 for item in root.findall(".//item")[:5]:
                     title_elem = item.find("title")
+                    link_elem = item.find("link")
                     if title_elem is not None and title_elem.text:
-                        txt = title_elem.text.strip()
-                        if txt not in headlines:
-                            headlines.append(txt)
+                        title = title_elem.text.strip()
+                        link = link_elem.text.strip() if link_elem is not None and link_elem.text else "https://www.coindesk.com"
+                        if not any(n[0] == title for n in news_items):
+                            news_items.append((title, link))
         except: pass
 
-    if not headlines:
-        headlines = [
-            "Market Update: Bitcoin and Ethereum show steady institutional inflows",
-            "Macroeconomic outlook: Federal Reserve policy remains in focus",
-            "DeFi liquidity expands as total value locked reaches key resistance"
+    if not news_items:
+        news_items = [
+            ("Market Update: Bitcoin and Ethereum show steady institutional inflows", "https://cointelegraph.com"),
+            ("Macroeconomic outlook: Federal Reserve policy remains in focus", "https://cointelegraph.com"),
+            ("DeFi liquidity expands as total value locked reaches key resistance", "https://cointelegraph.com")
         ]
         sentiment_points = 20
     else:
-        for h in headlines:
-            t_low = h.lower()
+        for title, _ in news_items:
+            t_low = title.lower()
             if any(w in t_low for w in ["bull", "surge", "rally", "gain", "up", "high", "growth", "approval", "jump", "record"]):
                 sentiment_points += 18
             if any(w in t_low for w in ["bear", "drop", "fall", "down", "low", "crash", "ban", "inflation", "loss", "risk"]):
                 sentiment_points -= 18
 
-    translated_headlines = [translate_to_german(h) for h in headlines[:5]]
-    return max(-100, min(100, sentiment_points)), translated_headlines
+    translated_news = [(translate_to_german(title), link) for title, link in news_items[:5]]
+    return max(-100, min(100, sentiment_points)), translated_news
 
 @st.cache_data(ttl=600)
 def get_defillama_metrics():
@@ -1122,7 +1127,8 @@ with st.container(border=True):
         st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
         if top_headlines:
             st.caption("Aktuelle Schlagzeilen:")
-            for h in top_headlines: st.markdown(f"- *{h}*")
+            for title, link in top_headlines:
+                st.markdown(f"- [{title}]({link})")
 
 # --- KRYPTO-AKADEMIE & LERNPFAD ---
 st.write("")
