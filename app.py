@@ -1127,31 +1127,26 @@ with st.container(border=True):
 # --- KRYPTO-AKADEMIE & LERNPFAD ---
 st.write("")
 with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True):
-    st.markdown("""
-    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards optimal für deine Investment-Entscheidungen nutzt.
+    st.markdown("Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards optimal für deine Investment-Entscheidungen nutzt.")
+    
+    st.markdown("---")
+    st.markdown("### 📚 Modul 1: Grundlagen & Signale verstehen")
+    st.markdown("- **STARKE KAUFCHANCE (🟢🟢):** Statistisch überverkaufter Zustand (Z-Score < -1.8) kombiniert mit starkem RSI (< 33) und gesundem Makro-Umfeld. Idealer Zeitpunkt für eine größere Tranche.")
+    st.markdown("- **KAUFEN (🟢):** Moderater Rücksetzer unter den gleitenden Durchschnitt bei stabilen Rahmenbedingungen.")
+    st.markdown("- **HALTEN (🟡):** Seitwärtsphase oder unentschlossener Markt. Keine übereilten Aktionen.")
+    st.markdown("- **TEILVERKAUF / VORSICHT (🔴):** Erste Anzeichen von Überhitzung oder steigendem Verkaufsdruck. Gewinne absichern.")
+    st.markdown("- **GEWINNE SICHERN (🔴🔴):** Extrem hohe Bewertung (Z-Score > 1.8 oder extremer Gier-Index). Kapital schützen.")
 
-    ---
+    st.markdown("---")
+    st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
+    st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
+    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
 
-    ### 📚 Modul 1: Grundlagen & Signale verstehen
-    * **STARKE KAUFCHANCE (🟢🟢):** Statistisch überverkaufter Zustand (Z-Score < -1.8) kombiniert mit starkem RSI (< 33) und gesundem Makro-Umfeld. Idealer Zeitpunkt für eine größere Tranche.
-    * **KAUFEN (🟢):** Moderater Rücksetzer unter den gleitenden Durchschnitt bei stabilen Rahmenbedingungen.
-    * **HALTEN (🟡):** Seitwärtsphase oder unentschlossener Markt. Keine übereilten Aktionen.
-    * **TEILVERKAUF / VORSICHT (🔴):** Erste Anzeichen von Überhitzung oder steigendem Verkaufsdruck. Gewinne absichern.
-    * **GEWINNE SICHERN (🔴🔴):** Extrem hohe Bewertung (Z-Score > 1.8 oder extremer Gier-Index). Kapital schützen.
-
-    ---
-
-    ### 🛡️ Modul 2: Risikomanagement & ATR
-    * **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.
-    * **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.
-
-    ---
-
-    ### 🌐 Modul 3: Makro-Ökonomie & On-Chain
-    * **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.
-    * **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.
-    * **Funding Rates:** Positive Raten bedeuten Long-Überhang (Longs zahlen an Shorts) – oft ein Indikator für bevorstehende Long-Squeezes.
-    """)
+    st.markdown("---")
+    st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
+    st.markdown("- **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.")
+    st.markdown("- **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.")
+    st.markdown("- **Funding Rates:** Positive Raten bedeuten Long-Überhang (Longs zahlen an Shorts) – oft ein Indikator für bevorstehende Long-Squeezes.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
