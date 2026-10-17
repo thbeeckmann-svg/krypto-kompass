@@ -1164,7 +1164,7 @@ with st.container(border=True):
 st.write("")
 with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
     st.markdown("""
-    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards forderst und für Entscheidungen nutzt.
+    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards für deine Entscheidungen nutzt.
     """)
 
 # EXPANDER: AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE)
@@ -1274,6 +1274,10 @@ with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expande
         if os.path.exists(IMP_FILE):
             try:
                 df_imp = pd.read_csv(IMP_FILE)
+                # Harmonisierung alter Spalten, falls alte CSV noch anders hieß
+                if "Änderungsdatum" in df_imp.columns and "Datum" not in df_imp.columns:
+                    df_imp = df_imp.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion"})
+                
                 df_imp = pd.concat([df_imp, new_imp_row], ignore_index=True)
             except:
                 df_imp = new_imp_row
@@ -1294,12 +1298,30 @@ if "update_confirmed_msg" in st.session_state:
 if os.path.exists(IMP_FILE):
     try:
         df_history_log = pd.read_csv(IMP_FILE)
+        
+        # Falls alte Spaltennamen existieren, flexibel umbenennen um 'None' Werte zu verhindern
+        col_rename_map = {}
+        if "Änderungsdatum" in df_history_log.columns: col_rename_map["Änderungsdatum"] = "Datum"
+        if "Titel" in df_history_log.columns: col_rename_map["Titel"] = "Aktion"
+        if "Beschreibung" in df_history_log.columns and "Trefferquote" not in df_history_log.columns: 
+            col_rename_map["Beschreibung"] = "Trefferquote"
+        df_history_log = df_history_log.rename(columns=col_rename_log_map if 'col_rename_log_map' in locals() else col_rename_map)
+
+        # Sicherstellen, dass die Kernspalten existieren
+        for required_col in ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]:
+            if required_col not in df_history_log.columns:
+                df_history_log[required_col] = "-"
+
+        # Zeilen mit leeren Werten oder 'None' Strings bereinigen
+        df_history_log = df_history_log.dropna(subset=["Datum"])
+        df_history_log = df_history_log[df_history_log["Datum"].astype(str).str.lower() != "none"]
+
         if not df_history_log.empty:
             st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
         else:
-            st.info("Noch keine Optimierungs-Historie vorhanden. Bestätige oben in der Admin-Konsole eine Aktualisierung.")
-    except Exception:
-        st.info("Historie konnte nicht geladen werden.")
+            st.info("Noch keine gültige Optimierungs-Historie vorhanden.")
+    except Exception as e:
+        st.info(f"Historie konnte nicht geladen werden. ({e})")
 else:
     st.info("Keine bisherigen Historie-Einträge gefunden.")
 
