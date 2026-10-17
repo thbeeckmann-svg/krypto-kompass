@@ -1083,4 +1083,156 @@ with st.container(border=True):
             n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
             sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
-            st.write(f"🌏 **Nikkei 225:** {format_
+            st.write(f"🌏 **Nikkei 225:** {format_ger(n_val, 0)} ({format_ger(n_chg, 2, True)}%) | **Hang Seng:** {format_ger(h_val, 0)} ({format_ger(h_chg, 2, True)}%) | **Shanghai Comp:** {format_ger(sse_v, 0)} ({format_ger(sse_c, 2, True)}%)")
+
+        st.write("---")
+        st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
+        if top_headlines:
+            st.caption("Aktuelle Schlagzeilen:")
+            for h in top_headlines: st.markdown(f"- *{h}*")
+
+# --- KRYPTO-AKADEMIE & LERNPFAD ---
+st.write("")
+with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
+    st.markdown("""
+    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards für fundierte Entscheidungen nutzt.
+    
+    ---
+    
+    ### 🛡️ Modul 1: Risikomanagement & Stop-Loss (ATR)
+    * **Das Konzept:** Bevor du über Gewinne nachdenkst, musst du dein Kapital schützen. Der **Stop-Loss** ist eine automatische Notbremse.
+    * **Wie es in der App funktioniert:** Unter *Details, Analyse & Chart* siehst du den **ATR-Wert (Average True Range)**. Er misst die historische Schwankungsbreite. Die App berechnet daraus automatisch deinen Stop-Loss und Take-Profit, damit du Verluste im Ernstfall begrenzen kannst.
+    
+    ### 📉 Modul 2: Marktstimmung & Emotionen (Fear & Greed)
+    * **Das Konzept:** Märkte werden von Gier und Angst angetrieben. Warren Buffetts berühmte Regel lautet: *"Sei gierig, wenn andere panisch sind."*
+    * **Wie es in der App funktioniert:** Der **Fear & Greed Index** (ganz unten) zeigt dir den emotionalen Zustand des Marktes. 
+        * *Extreme Panik (Index < 25):* Oft historisch günstige Einstiegschancen.
+        * *Extreme Gier (Index > 75):* Höhere Gefahr von plötzlichen Kursrücksetzern / Gewinnmitnahmen.
+
+    ### 🌐 Modul 3: Makroökonomie & Institutionelle Flows
+    * **Das Konzept:** Kryptowährungen existieren nicht im Vakuum. Sie reagieren stark auf die globale Finanzwelt (Zinsen, US-Dollar, Aktien).
+    * **Wie es in der App funktioniert:** In den *Globalen Leitmärkten* siehst du US-Zinsen, den DXY (Dollar-Index) und vor allem die **Spot-ETF Nettoflüsse**. Wenn institutionelles Geld über ETFs einströmt, stützt das den Kurs massiv.
+
+    ### 📊 Modul 4: Technische Indikatoren (RSI & Signal-Score)
+    * **Das Konzept:** Mathematische Indikatoren helfen dabei, zu erkennen, ob ein Coin gerade "überkauft" oder "überverkauft" ist.
+    * **Wie es in der App funktioniert:** Der **RSI (Relative Strength Index)** zeigt Werte von 0 bis 100. Werte unter 30 signalisieren einen überverkauften Markt (Kaufchance), Werte über 70 deuten auf Überhitzung hin. Der finale **Signal-Score** bündelt alle diese Faktoren automatisch für dich.
+    """)
+
+# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE)
+st.write("")
+with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)**", expanded=False):
+    st.markdown("Auswertung der protokollierten Prognosen über bis zu **3 Jahre (1.095 Tage)**.")
+
+    if os.path.exists(LOG_FILE):
+        try:
+            df_archive = pd.read_csv(LOG_FILE)
+            if "Datenquelle" not in df_archive.columns: df_archive["Datenquelle"] = "Binance Spot REST API"
+            if "Target_Horizon" not in df_archive.columns: df_archive["Target_Horizon"] = "7 Tage"
+            df_archive.to_csv(LOG_FILE, index=False)
+
+            if not df_archive.empty and current_data:
+                df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
+                df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
+
+                all_coins = list(df_archive_sorted["Coin"].unique())
+                selected_filter = st.multiselect("🔍 Nach Coin filtern:", options=all_coins, default=all_coins)
+                df_filtered_view = df_archive_sorted[df_archive_sorted["Coin"].isin(selected_filter)]
+
+                comparison_rows, backtest_data = [], []
+                correct_hits, total_evaluated = 0, 0
+                sim_depot_signal, sim_depot_hold = 100.0, 100.0
+
+                monthly_stats = {}
+
+                for index, row in df_filtered_view.iterrows():
+                    c_name, kurs_damals, signal_damals, horizon = row["Coin"], float(row.get("Kurs_Damals", 0)), str(row.get("Signal", "")).upper(), str(row.get("Target_Horizon", "7 Tage"))
+                    parsed_dt = row["ParsedDate"]
+                    datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
+                    kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
+                    diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
+
+                    month_key = parsed_dt.strftime("%Y-%m") if pd.notnull(parsed_dt) else "Unbekannt"
+                    if month_key not in monthly_stats:
+                        monthly_stats[month_key] = {"trades": 0, "wins": 0, "total_diff": 0.0}
+
+                    is_today = False
+                    if pd.notnull(parsed_dt):
+                        now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
+                        if (now_dt - parsed_dt).total_seconds() < 86400:
+                            is_today = True
+
+                    if not is_today:
+                        if "KAUF" in signal_damals: sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
+                        sim_depot_hold *= 1.0 + (diff_pct / 100.0)
+
+                    dt_obj = parsed_dt if pd.notnull(parsed_dt) else pd.to_datetime(row["Datum"])
+                    backtest_data.append({"Datum": dt_obj, "App-Strategie": round(sim_depot_signal, 2), "Buy & Hold": round(sim_depot_hold, 2)})
+
+                    if is_today:
+                        evaluation = "Laufend ⏳"
+                    else:
+                        evaluation = "Neutral 🟡"
+                        if "KAUF" in signal_damals:
+                            total_evaluated += 1
+                            monthly_stats[month_key]["trades"] += 1
+                            if diff_pct > -1.5:
+                                correct_hits += 1
+                                monthly_stats[month_key]["wins"] += 1
+                                evaluation = "Treffer 🟢"
+                            else: evaluation = "Fehlsignal 🔴"
+                        elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
+                            total_evaluated += 1
+                            monthly_stats[month_key]["trades"] += 1
+                            if diff_pct < 1.5:
+                                correct_hits += 1
+                                monthly_stats[month_key]["wins"] += 1
+                                evaluation = "Schutz 🟢"
+                            else: evaluation = "Seitwärts 🟡"
+                    
+                    monthly_stats[month_key]["total_diff"] += diff_pct
+
+                    comparison_rows.append({"Datum": datum_formatted, "Coin": c_name, "Horizon": horizon, "Signal": signal_damals, "Kurs Damals": f"{format_ger(kurs_damals, 2 if kurs_damals >= 1 else 4)} €", "Aktuell": f"{format_ger(kurs_aktuell, 2 if kurs_aktuell >= 1 else 4)} €", "Diff (%)": format_ger(diff_pct, 2, True) + " %", "Auswertung": evaluation})
+
+                st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+
+                st.write("---")
+                st.markdown("##### 📅 Monatlicher Performance- & Gewinn-Report")
+                monthly_rows = []
+                for m_key, m_val in sorted(monthly_stats.items(), reverse=True):
+                    t_count = m_val["trades"]
+                    w_count = m_val["wins"]
+                    win_rate = (w_count / t_count * 100) if t_count > 0 else 0.0
+                    monthly_rows.append({
+                        "Monat": m_key,
+                        "Ausgewertete Signale": t_count,
+                        "Erfolgreich": w_count,
+                        "Trefferquote": f"{format_ger(win_rate, 1)} %",
+                        "Ø Kurs-Performance": f"{format_ger(m_val['total_diff'] / max(1, t_count), 2, True)} %"
+                    })
+                st.dataframe(pd.DataFrame(monthly_rows), use_container_width=True, hide_index=True)
+
+                st.write("---")
+                st.markdown("##### 📈 Backtest-Vergleich")
+                df_bt = pd.DataFrame(backtest_data)
+                if not df_bt.empty:
+                    df_bt_melted = df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")
+                    st.altair_chart(alt.Chart(df_bt_melted).mark_line(strokeWidth=2).encode(x=alt.X("Datum:T", title=None, sort=None), y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)), color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"])), tooltip=["Datum:T", "Strategie", "Wert"]).properties(height=220).interactive(), use_container_width=True)
+
+                if total_evaluated > 0: st.metric("Signal-Trefferquote", f"{format_ger((correct_hits / total_evaluated) * 100, 1)}%", f"{correct_hits} von {total_evaluated} Zyklen erfolgreich")
+
+                st.write("---")
+                st.markdown(local_learning_report)
+
+                st.write("---")
+                st.markdown("##### 💾 CSV-Export & Backup")
+                col_d1, col_d2, col_d3 = st.columns(3)
+                if os.path.exists(LOG_FILE):
+                    with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
+                if os.path.exists(MARKET_LOG_FILE):
+                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
+                if os.path.exists(IMP_FILE):
+                    with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
+        except Exception as e: st.warning(f"Fehler: {e}")
+
+st.markdown("---")
+st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
