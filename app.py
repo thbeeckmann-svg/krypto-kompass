@@ -282,38 +282,49 @@ def get_vix_and_nasdaq():
     except: pass
     return data
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=120)
 def get_news_sentiment_score():
     headers = {"User-Agent": "Mozilla/5.0"}
     headlines = []
-    sentiment_points = 0
+    sentiment_points = 25  # Neutraler Basiswert
+
     try:
-        res = requests.get("https://min-api.cryptocompare.com/data/v2/news/?lang=EN", headers=headers, timeout=3)
+        res = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
         if res.status_code == 200:
-            for art in res.json().get("Data", [])[:5]:
-                if art.get("title"): headlines.append(art.get("title"))
+            root = ET.fromstring(res.text)
+            for item in root.findall(".//item")[:5]:
+                title_elem = item.find("title")
+                if title_elem is not None and title_elem.text:
+                    headlines.append(title_elem.text.strip())
     except: pass
 
-    if not headlines:
+    if len(headlines) < 3:
         try:
-            res_cg = requests.get("https://api.coingecko.com/api/v3/search/trending", headers=headers, timeout=3)
-            if res_cg.status_code == 200:
-                for c in res_cg.json().get("coins", [])[:5]:
-                    headlines.append(f"Trending Asset im Fokus: {c.get('item', {}).get('name', '')}")
+            res = requests.get("https://www.coindesk.com/arc/outbound-feeds/rss/", headers=headers, timeout=4)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                for item in root.findall(".//item")[:5]:
+                    title_elem = item.find("title")
+                    if title_elem is not None and title_elem.text:
+                        txt = title_elem.text.strip()
+                        if txt not in headlines:
+                            headlines.append(txt)
         except: pass
 
     if not headlines:
         headlines = [
-            "Makro-Lage: EZB und Fed signalisieren geldpolitische Kursrichtung",
-            "Institutional Inflows: Spot-ETF Volumina stabilisieren den Markt",
-            "On-Chain Aktivität: Langfristige Halter zeigen konstante Akkumulation"
+            "Market Update: Bitcoin and Ethereum show steady institutional inflows",
+            "Macroeconomic outlook: Federal Reserve policy remains in focus",
+            "DeFi liquidity expands as total value locked reaches key resistance"
         ]
-        sentiment_points = 25
+        sentiment_points = 20
     else:
         for h in headlines:
             t_low = h.lower()
-            if any(w in t_low for w in ["bull", "cut", "rally", "gain", "up", "high", "surge", "approval", "growth"]): sentiment_points += 20
-            if any(w in t_low for w in ["bear", "hike", "drop", "fall", "down", "low", "crash", "ban", "inflation"]): sentiment_points -= 20
+            if any(w in t_low for w in ["bull", "surge", "rally", "gain", "up", "high", "growth", "approval", "jump", "record"]):
+                sentiment_points += 18
+            if any(w in t_low for w in ["bear", "drop", "fall", "down", "low", "crash", "ban", "inflation", "loss", "risk"]):
+                sentiment_points -= 18
 
     return max(-100, min(100, sentiment_points)), headlines[:5]
 
@@ -660,9 +671,6 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
             if "Target_Horizon" not in df_log.columns: df_log["Target_Horizon"] = "7 Tage"
             df_log["DateOnly"] = df_log["Datum"].astype(str).str[:10]
             mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
-            
-            # WICHTIG: Überschreiben des heutigen Datensatzes deaktiviert. 
-            # Verhindert, dass der Preis 24h lang mitläuft und die Diff auf 0.00% setzt.
             if mask.any():
                 return
             else:
@@ -885,12 +893,18 @@ if current_data and len(current_data) > 0:
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
 
                         date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m." if zeitraum_wahl in ["7 Tage", "30 Tage"] else "%b %y")
-                        y_format = ",.2f" if max_p < 10 else ",.0f"
+                        y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
 
-                        base = alt.Chart(df_chart).encode(x=alt.X("Timestamp:T", title=None, axis=alt.Axis(format=date_format, labelAngle=0, grid=True, gridDash=[2, 2], gridColor="rgba(150, 150, 150, 0.15)", tickCount=6)), y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)")))
+                        base = alt.Chart(df_chart).encode(
+                            x=alt.X("Timestamp:T", title=None, axis=alt.Axis(format=date_format, labelAngle=0, grid=True, gridDash=[2, 2], gridColor="rgba(150, 150, 150, 0.15)", tickCount=6)),
+                            y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)"))
+                        )
                         chart_layers = base.mark_area(opacity=0.12, color=chart_color) + base.mark_line(color=chart_color, strokeWidth=2)
-                        if "EMA" in df_chart.columns: chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(y=alt.Y("EMA:Q"))
-                        st.altair_chart((chart_layers + base.mark_point(size=40, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"), alt.Tooltip("Kurs:Q", title="Kurs", format=",.2f €")])).interactive(), use_container_width=True)
+                        if "EMA" in df_chart.columns: 
+                            chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(y=alt.Y("EMA:Q"))
+                        
+                        tooltip_format = ",.4f €" if max_p < 1 else ",.2f €"
+                        st.altair_chart((chart_layers + base.mark_point(size=40, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
@@ -988,7 +1002,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     if "KAUF" in signal_damals: sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
                     sim_depot_hold *= 1.0 + (diff_pct / 100.0)
 
-                    # WICHTIG: Verwende ein DateTime Objekt, damit Altair die Achse sauber formatiert!
                     dt_obj = parsed_dt if pd.notnull(parsed_dt) else pd.to_datetime(row["Datum"])
                     backtest_data.append({"Datum": dt_obj, "App-Strategie": round(sim_depot_signal, 2), "Buy & Hold": round(sim_depot_hold, 2)})
 
