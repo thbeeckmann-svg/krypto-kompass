@@ -1164,27 +1164,7 @@ with st.container(border=True):
 st.write("")
 with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
     st.markdown("""
-    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards für fundierte Entscheidungen nutzt.
-    
-    ---
-    
-    ### 🛡️ Modul 1: Risikomanagement & Stop-Loss (ATR)
-    * **Das Konzept:** Bevor du über Gewinne nachdenkst, musst du dein Kapital schützen. Der **Stop-Loss** ist eine automatische Notbremse.
-    * **Wie es in der App funktioniert:** Unter *Details, Analyse & Chart* siehst du den **ATR-Wert (Average True Range)**. Er misst die historische Schwankungsbreite. Die App berechnet daraus automatisch deinen Stop-Loss und Take-Profit, damit du Verluste im Ernstfall begrenzen kannst.
-    
-    ### 📉 Modul 2: Marktstimmung & Emotionen (Fear & Greed)
-    * **Das Konzept:** Märkte werden von Gier und Angst angetrieben. Warren Buffetts berühmte Regel lautet: *"Sei gierig, wenn andere panisch sind."*
-    * **Wie es in der App funktioniert:** Der **Fear & Greed Index** (ganz unten) zeigt dir den emotionalen Zustand des Marktes. 
-        * *Extreme Panik (Index < 25):* Oft historisch günstige Einstiegschancen.
-        * *Extreme Gier (Index > 75):* Höhere Gefahr von plötzlichen Kursrücksetzern / Gewinnmitnahmen.
-
-    ### 🌐 Modul 3: Makroökonomie & Institutionelle Flows
-    * **Das Konzept:** Kryptowährungen existieren nicht im Vakuum. Sie reagieren stark auf die globale Finanzwelt (Zinsen, US-Dollar, Aktien).
-    * **Wie es in der App funktioniert:** In den *Globalen Leitmärkten* siehst du US-Zinsen, den DXY (Dollar-Index) und vor allem die **Spot-ETF Nettoflüsse**. Wenn institutionelles Geld über ETFs einströmt, stützt das den Kurs massiv.
-
-    ### 📊 Modul 4: Technische Indikatoren (RSI & Signal-Score)
-    * **Das Konzept:** Mathematische Indikatoren helfen dabei, zu erkennen, ob ein Coin gerade "überkauft" oder "überverkauft" ist.
-    * **Wie es in der App funktioniert:** Der **RSI (Relative Strength Index)** zeigt Werte von 0 bis 100. Werte unter 30 signalisieren einen überverkauften Markt (Kaufchance), Werte über 70 deuten auf Überhitzung hin. Der finale **Signal-Score** bündelt alle diese Faktoren automatisch für dich.
+    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards forderst und für Entscheidungen nutzt.
     """)
 
 # EXPANDER: AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE)
@@ -1259,51 +1239,15 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
                             else: evaluation = "Seitwärts 🟡"
                     
                     monthly_stats[month_key]["total_diff"] += diff_pct
-
                     comparison_rows.append({"Datum": datum_formatted, "Coin": c_name, "Horizon": horizon, "Signal": signal_damals, "Kurs Damals": f"{format_ger(kurs_damals, 2 if kurs_damals >= 1 else 4)} €", "Aktuell": f"{format_ger(kurs_aktuell, 2 if kurs_aktuell >= 1 else 4)} €", "Diff (%)": format_ger(diff_pct, 2, True) + " %", "Auswertung": evaluation})
 
                 st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
 
                 st.write("---")
-                st.markdown("##### 📅 Monatlicher Performance- & Gewinn-Report")
-                monthly_rows = []
-                for m_key, m_val in sorted(monthly_stats.items(), reverse=True):
-                    t_count = m_val["trades"]
-                    w_count = m_val["wins"]
-                    win_rate = (w_count / t_count * 100) if t_count > 0 else 0.0
-                    monthly_rows.append({
-                        "Monat": m_key,
-                        "Ausgewertete Signale": t_count,
-                        "Erfolgreich": w_count,
-                        "Trefferquote": f"{format_ger(win_rate, 1)} %",
-                        "Ø Kurs-Performance": f"{format_ger(m_val['total_diff'] / max(1, t_count), 2, True)} %"
-                    })
-                st.dataframe(pd.DataFrame(monthly_rows), use_container_width=True, hide_index=True)
-
-                st.write("---")
-                st.markdown("##### 📈 Backtest-Vergleich")
-                df_bt = pd.DataFrame(backtest_data)
-                if not df_bt.empty:
-                    df_bt_melted = df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")
-                    st.altair_chart(alt.Chart(df_bt_melted).mark_line(strokeWidth=2).encode(x=alt.X("Datum:T", title=None, sort=None), y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)), color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"])), tooltip=["Datum:T", "Strategie", "Wert"]).properties(height=220).interactive(), use_container_width=True)
-
-                if total_evaluated > 0: st.metric("Signal-Trefferquote", f"{format_ger((correct_hits / total_evaluated) * 100, 1)}%", f"{correct_hits} von {total_evaluated} Zyklen erfolgreich")
-
-                st.write("---")
                 st.markdown(local_learning_report)
-
-                st.write("---")
-                st.markdown("##### 💾 CSV-Export & Backup")
-                col_d1, col_d2, col_d3 = st.columns(3)
-                if os.path.exists(LOG_FILE):
-                    with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
-                if os.path.exists(MARKET_LOG_FILE):
-                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
-                if os.path.exists(IMP_FILE):
-                    with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e: st.warning(f"Fehler: {e}")
 
-# ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER (GANZ UNTEN)
+# --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER (MIT BESTÄTIGUNG & SCHLIESSEN) ---
 st.write("")
 with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
     st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
@@ -1313,8 +1257,51 @@ with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expande
     col_a2.metric("❌ Fehlsignale", total_fails)
     col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
     
-    st.markdown("**KI-generierter Verbesserungsvorschlag (Copy & Paste):**")
+    st.markdown("**KI-generierter Verbesserungsvorschlag:**")
     st.code(admin_prompt, language="markdown")
+    
+    # Bestätigungs-Button mit Logik zum Protokollieren & Schließen
+    if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
+        now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        new_imp_row = pd.DataFrame([{
+            "Datum": now_str,
+            "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
+            "Trefferquote": f"{win_rate:.1f}%",
+            "Erfolgreich": total_wins,
+            "Fehler": total_fails
+        }])
+        
+        if os.path.exists(IMP_FILE):
+            try:
+                df_imp = pd.read_csv(IMP_FILE)
+                df_imp = pd.concat([df_imp, new_imp_row], ignore_index=True)
+            except:
+                df_imp = new_imp_row
+        else:
+            df_imp = new_imp_row
+            
+        save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
+        st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
+        st.rerun()
+
+# --- UNTERE ANZEIGE: HISTORIE DER BESTÄTIGTEN VERBESSERUNGEN ---
+st.write("---")
+st.markdown("### 📜 Historie bestätigter Optimierungen & Aktualisierungen")
+
+if "update_confirmed_msg" in st.session_state:
+    st.success(st.session_state["update_confirmed_msg"])
+
+if os.path.exists(IMP_FILE):
+    try:
+        df_history_log = pd.read_csv(IMP_FILE)
+        if not df_history_log.empty:
+            st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.info("Noch keine Optimierungs-Historie vorhanden. Bestätige oben in der Admin-Konsole eine Aktualisierung.")
+    except Exception:
+        st.info("Historie konnte nicht geladen werden.")
+else:
+    st.info("Keine bisherigen Historie-Einträge gefunden.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
