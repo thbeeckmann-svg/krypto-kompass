@@ -1274,9 +1274,13 @@ with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expande
         if os.path.exists(IMP_FILE):
             try:
                 df_imp = pd.read_csv(IMP_FILE)
-                # Harmonisierung alter Spalten, falls alte CSV noch anders hieß
-                if "Änderungsdatum" in df_imp.columns and "Datum" not in df_imp.columns:
-                    df_imp = df_imp.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion"})
+                # Alte uneinheitliche Spalten komplett bereinigen
+                if "Änderungsdatum" in df_imp.columns:
+                    df_imp = df_imp.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"})
+                
+                # Unsaubere / alte / None Zeilen entfernen
+                df_imp = df_imp.dropna(subset=["Datum"])
+                df_imp = df_imp[df_imp["Datum"].astype(str).str.lower() != "none"]
                 
                 df_imp = pd.concat([df_imp, new_imp_row], ignore_index=True)
             except:
@@ -1299,22 +1303,19 @@ if os.path.exists(IMP_FILE):
     try:
         df_history_log = pd.read_csv(IMP_FILE)
         
-        # Falls alte Spaltennamen existieren, flexibel umbenennen um 'None' Werte zu verhindern
-        col_rename_map = {}
-        if "Änderungsdatum" in df_history_log.columns: col_rename_map["Änderungsdatum"] = "Datum"
-        if "Titel" in df_history_log.columns: col_rename_map["Titel"] = "Aktion"
-        if "Beschreibung" in df_history_log.columns and "Trefferquote" not in df_history_log.columns: 
-            col_rename_map["Beschreibung"] = "Trefferquote"
-        df_history_log = df_history_log.rename(columns=col_rename_log_map if 'col_rename_log_map' in locals() else col_rename_map)
+        # Umbenennung alter Spalten aus der CSV
+        if "Änderungsdatum" in df_history_log.columns:
+            df_history_log = df_history_log.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"})
 
-        # Sicherstellen, dass die Kernspalten existieren
-        for required_col in ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]:
-            if required_col not in df_history_log.columns:
-                df_history_log[required_col] = "-"
+        # Sicherstellen, dass Kernspalten existieren
+        for col in ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]:
+            if col not in df_history_log.columns:
+                df_history_log[col] = "-"
 
-        # Zeilen mit leeren Werten oder 'None' Strings bereinigen
+        # Strenges Herauszufiltern von 'None', NaN oder leeren Werten in der Datumsspalte
         df_history_log = df_history_log.dropna(subset=["Datum"])
         df_history_log = df_history_log[df_history_log["Datum"].astype(str).str.lower() != "none"]
+        df_history_log = df_history_log[df_history_log["Datum"].astype(str).str.strip() != ""]
 
         if not df_history_log.empty:
             st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
