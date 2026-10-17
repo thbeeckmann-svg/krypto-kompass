@@ -1026,12 +1026,16 @@ if current_data and len(current_data) > 0:
                     factor_scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_value, funding_rate=funding_rate_val, weights=active_weights)
                     
                     df_scores = pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])
+                    
+                    # Feste Reihenfolge der Indikatoren erzwingen, damit keine Zeilen verschwinden
+                    indikatoren_reihenfolge = list(factor_scores.keys())
+
                     st.altair_chart(
                         alt.Chart(df_scores)
                         .mark_bar()
                         .encode(
                             x=alt.X("Score:Q", scale=alt.Scale(domain=[-100, 100]), title="Bärisch (-100) | Bullisch (+100)"),
-                            y=alt.Y("Indikator:N", sort=list(factor_scores.keys()), title=None, axis=alt.Axis(labelLimit=250)),
+                            y=alt.Y("Indikator:N", sort=indikatoren_reihenfolge, title=None, axis=alt.Axis(labelLimit=250)),
                             color=alt.condition(alt.datum.Score > 0, alt.value("#2ecc71"), alt.value("#e74c3c")),
                             tooltip=["Indikator", "Score"]
                         )
