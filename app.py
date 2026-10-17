@@ -162,7 +162,7 @@ def save_and_commit_csv(file_path, df, force_commit=False):
         except Exception:
             pass
 
-def clean_old_logs(file_path, days_limit=365):
+def clean_old_logs(file_path, days_limit=1095):
     if os.path.exists(file_path):
         try:
             df = pd.read_csv(file_path)
@@ -175,8 +175,8 @@ def clean_old_logs(file_path, days_limit=365):
         except Exception:
             pass
 
-clean_old_logs(LOG_FILE, 365)
-clean_old_logs(MARKET_LOG_FILE, 365)
+clean_old_logs(LOG_FILE, 1095)
+clean_old_logs(MARKET_LOG_FILE, 1095)
 
 # --- FREIE LIVE-DATEN ABRUFE (MULTI-SOURCE API) ---
 @st.cache_data(ttl=10)
@@ -511,7 +511,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except: pass
     return 0.0001
 
-# --- AUTONOMES SELBSTLERN-SYSTEM ---
+# --- AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE) ---
 def generate_local_self_learning_optimizations(df_archive, df_market, current_data):
     default_weights = {
         "Trend & Momentum": 15.0, "ETF Net Flows": 15.0, "Makro (Zins/Aktien/Währung/VIX)": 15.0,
@@ -520,7 +520,7 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
     }
 
     if df_archive is None or df_archive.empty or not current_data:
-        return ("🧠 *Das autonome Lernmodul sammelt aktuell noch historische Daten.*", default_weights)
+        return ("🧠 *Das 3-Jahres-Lernmodul sammelt aktuell historische Zyklen.*", default_weights)
 
     buy_signals, sell_signals, failed_buys, failed_sells = 0, 0, 0, 0
 
@@ -551,20 +551,20 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
         weights["Nachrichten & Zins-Sentiment"] += 1.0
-        optimizations.append("⚠️ **Anpassung Kauf-Signale:** Makro-, Zins- und News-Einfluss gestärkt.")
+        optimizations.append("⚠️ **Anpassung Kauf-Signale (3-Jahres-Basis):** Makro-, Zins- und News-Einfluss gestärkt.")
     if sell_signals > 0 and (failed_sells / sell_signals) > 0.3:
         weights["Funding Rates & Derivate"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
-        optimizations.append("⚠️ **Anpassung Verkauf-Signale:** Derivate-Raten & RSI höher gewichtet.")
+        optimizations.append("⚠️ **Anpassung Verkauf-Signale (3-Jahres-Basis):** Derivate-Raten & RSI höher gewichtet.")
     if not optimizations:
-        optimizations.append("✅ **System-Status Optimal:** Multi-Faktoren-Gewichtungen aktiv.")
+        optimizations.append("✅ **3-Jahres-System-Status Optimal:** Langfrist-Gewichtungen stabil.")
 
     report = f"""
-#### 📊 Autonom berechnete Gewichtungs-Optimierung (Quant Self-Tuning)
-Basierend auf **{len(df_archive)} ausgewerteten Zyklen** in `prediction_log.csv`:
+#### 📊 3-Jahres Quant Self-Tuning (Autonome Gewichtungs-Optimierung)
+Basierend auf bis zu **3 Jahren (1.095 Tagen)** historischen Zyklen in `prediction_log.csv`:
 
-| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
+| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung (3-Jahres-Modus) |
 | :--- | :---: | :---: |
 | **Trend & Momentum** | 15,0 % | **{format_ger(weights['Trend & Momentum'], 1)} %** |
 | **ETF Net Flows (Spot)** | 15,0 % | **{format_ger(weights['ETF Net Flows'], 1)} %** |
@@ -575,7 +575,7 @@ Basierend auf **{len(df_archive)} ausgewerteten Zyklen** in `prediction_log.csv`
 | **Nachrichten & Zins-Sentiment** | 10,0 % | **{format_ger(weights['Nachrichten & Zins-Sentiment'], 1)} %** |
 | **DeFi TVL & Liq.** | 5,0 % | **{format_ger(weights['Krypto-Liquidität & DeFi TVL'], 1)} %** |
 
-##### 💡 Autonome System-Erkenntnisse & Anpassungen:
+##### 💡 3-Jahres Langfrist-Erkenntnisse & Anpassungen:
 """ + "\n".join([f"- {opt}" for opt in optimizations])
 
     return report, weights
@@ -641,7 +641,7 @@ def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
     except: pass
     try:
         t = yf.Ticker(symbol_yf_map.get(symbol, "BTC-EUR"))
-        hist = t.history(period="2d" if interval == "1h" else f"{limit_anzahl + 10}d", interval="1h" if interval == "1h" else "1d")
+        hist = t.history(period="2d" if interval == "1h" else f"{limit_anzahl + 10}d", interval="1h" if interval == "1h" else ("1wk" if weekly else "1d"))
         if not hist.empty:
             hist = hist.tail(limit_anzahl)
             dates = [pd.to_datetime(d).tz_convert(BERLIN_TZ).tz_localize(None) if hasattr(d, "tzinfo") and d.tzinfo is not None else pd.to_datetime(d) for d in hist.index]
@@ -730,7 +730,10 @@ def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, euro
     elif zeitraum == "30 Tage": t_sf, t_mf, t_ms, t_ss = -22.0, -8.0, 9.0, 22.0
     elif zeitraum == "90 Tage": t_sf, t_mf, t_ms, t_ss = -32.0, -11.0, 13.0, 32.0
     elif zeitraum == "6 Monate": t_sf, t_mf, t_ms, t_ss = -45.0, -15.0, 18.0, 45.0
-    else: t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
+    elif zeitraum == "1 Jahr": t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
+    elif zeitraum == "2 Jahre": t_sf, t_mf, t_ms, t_ss = -80.0, -30.0, 40.0, 90.0
+    elif zeitraum == "3 Jahre": t_sf, t_mf, t_ms, t_ss = -100.0, -40.0, 60.0, 150.0
+    else: t_sf, t_mf, t_ms, t_ss = -120.0, -50.0, 80.0, 250.0  # 5 Jahre
 
     if perf_val <= t_sf and macro_score >= 0: return ("STARKE KAUFCHANCE 🟢🟢", f"Deutlicher Kursrücksetzer ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
     elif perf_val <= t_mf: return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
@@ -762,7 +765,7 @@ local_learning_report, dynamic_weights = generate_local_self_learning_optimizati
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     with col_e1:
-        zeitraum_wahl = st.selectbox("Rückblick-Zeitraum wählen:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr"], index=1)
+        zeitraum_wahl = st.selectbox("Rückblick- & Vergleichszeitraum wählen:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr", "2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"], index=1)
         investment_wahl = st.selectbox("Geplantes Ordervolumen (Tranche):", [100, 500, 1000, 2500, 5000, "Individuell"], index=1)
         geplantes_budget = st.number_input("Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0) if investment_wahl == "Individuell" else float(investment_wahl)
 
@@ -793,7 +796,15 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 
 if auto_refresh_aktiv: st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
 
-limit_anzahl, interval, wöchentlich = (24, "1h", False) if zeitraum_wahl == "24 Stunden" else (7, "1d", False) if zeitraum_wahl == "7 Tage" else (30, "1d", False) if zeitraum_wahl == "30 Tage" else (90, "1d", True) if zeitraum_wahl == "90 Tage" else (180, "1d", True) if zeitraum_wahl == "6 Monate" else (365, "1d", True)
+if zeitraum_wahl == "24 Stunden": limit_anzahl, interval, wöchentlich = 24, "1h", False
+elif zeitraum_wahl == "7 Tage": limit_anzahl, interval, wöchentlich = 7, "1d", False
+elif zeitraum_wahl == "30 Tage": limit_anzahl, interval, wöchentlich = 30, "1d", False
+elif zeitraum_wahl == "90 Tage": limit_anzahl, interval, wöchentlich = 90, "1d", True
+elif zeitraum_wahl == "6 Monate": limit_anzahl, interval, wöchentlich = 180, "1d", True
+elif zeitraum_wahl == "1 Jahr": limit_anzahl, interval, wöchentlich = 365, "1d", True
+elif zeitraum_wahl == "2 Jahre": limit_anzahl, interval, wöchentlich = 104, "1wk", True
+elif zeitraum_wahl == "3 Jahre": limit_anzahl, interval, wöchentlich = 156, "1wk", True
+else: limit_anzahl, interval, wöchentlich = 260, "1wk", True  # 5 Jahre (Zyklus)
 
 nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
 nikkei_chg = asian_markets.get("Nikkei_225", {}).get("change") if asian_markets else 0.0
@@ -943,7 +954,7 @@ if current_data and len(current_data) > 0:
                         puffer = (max_p - min_p) * 0.08 if max_p != min_p else min_p * 0.01
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
 
-                        date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m." if zeitraum_wahl in ["7 Tage", "30 Tage"] else "%b %y")
+                        date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m.%Y" if zeitraum_wahl in ["2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"] else "%d.%m.")
                         y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
 
                         x_axis = alt.Axis(
@@ -1058,10 +1069,10 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=Fals
     * **Wie es in der App funktioniert:** Der **RSI (Relative Strength Index)** zeigt Werte von 0 bis 100. Werte unter 30 signalisieren einen überverkauften Markt (Kaufchance), Werte über 70 deuten auf Überhitzung hin. Der finale **Signal-Score** bündelt alle diese Faktoren automatisch für dich.
     """)
 
-# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM
+# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE)
 st.write("")
-with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
-    st.markdown("Auswertung der protokollierten Prognosen der letzten **365 Tage**.")
+with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)**", expanded=False):
+    st.markdown("Auswertung der protokollierten Prognosen über bis zu **3 Jahre (1.095 Tage)**.")
 
     if os.path.exists(LOG_FILE):
         try:
@@ -1169,9 +1180,9 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 if os.path.exists(LOG_FILE):
                     with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(MARKET_LOG_FILE):
-                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
+                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(IMP_FILE):
-                    with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
+                    with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e: st.warning(f"Fehler: {e}")
 
 st.markdown("---")
