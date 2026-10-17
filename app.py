@@ -603,9 +603,20 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
             "Krypto-Liquidität & DeFi TVL": 5.0
         }
 
-    trend_score = 80 if perf_val <= -7.5 else 40 if perf_val <= -3.0 else -80 if perf_val >= 7.5 else -40 if perf_val >= 3.5 else 0
+    # Robuste Scores, damit bei 0 ein minimaler Ausschlag (z.B. 5 oder -5) angezeigt wird statt komplett 0
+    if perf_val <= -7.5: trend_score = 80
+    elif perf_val <= -3.0: trend_score = 40
+    elif perf_val >= 7.5: trend_score = -80
+    elif perf_val >= 3.5: trend_score = -40
+    else: trend_score = 5 if perf_val <= 0 else -5
+
     sentiment_score = 90 if fg_value <= 25 else -90 if fg_value >= 75 else (50 - fg_value) * 1.5
-    etf_score = 90 if etf_net_flow >= 200.0 else 50 if etf_net_flow >= 50.0 else -90 if etf_net_flow <= -200.0 else -50 if etf_net_flow <= -50.0 else 0
+
+    if etf_net_flow >= 200.0: etf_score = 90
+    elif etf_net_flow >= 50.0: etf_score = 50
+    elif etf_net_flow <= -200.0: etf_score = -90
+    elif etf_net_flow <= -50.0: etf_score = -50
+    else: etf_score = 5 if etf_net_flow >= 0 else -5
     
     if funding_rate is not None:
         funding_score = -100 if funding_rate >= 0.0004 else (-60 if funding_rate >= 0.0002 else (100 if funding_rate <= -0.0003 else (60 if funding_rate <= -0.0001 else 10)))
@@ -1027,7 +1038,7 @@ if current_data and len(current_data) > 0:
                     
                     df_scores = pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])
                     
-                    # Feste Reihenfolge der Indikatoren erzwingen, damit keine Zeilen verschwinden
+                    # Feste Reihenfolge der Indikatoren erzwingen
                     indikatoren_reihenfolge = list(factor_scores.keys())
 
                     st.altair_chart(
