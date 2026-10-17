@@ -108,18 +108,6 @@ def check_password():
 if not check_password():
     st.stop()
 
-# KOPFBEREICH
-col_title, col_btn = st.columns([2, 1])
-with col_title:
-    st.markdown("### 🪙 Krypto-Kompass")
-with col_btn:
-    if st.button("🔄 Aktualisieren", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
-st.caption(f"Letztes Update: {aktuelle_zeit}")
-
 # --- AUTOMATISCHER GITHUB CLOUD-SPEICHER ---
 def save_and_commit_csv(file_path, df, force_commit=False):
     df.to_csv(file_path, index=False)
@@ -238,12 +226,6 @@ def get_real_spot_etf_flows():
         if r.status_code == 200:
             data = r.json().get("data", [])
             if data: return round(float(data[-1].get("totalNetInflow", data[-1].get("totalNetFlow", 0))), 2)
-    except: pass
-    try:
-        ibit = yf.Ticker("IBIT").history(period="2d")
-        if not ibit.empty:
-            est = (ibit["Volume"].iloc[-1] * ibit["Close"].iloc[-1] * 0.06) / 1e6
-            return round(est if ibit["Close"].iloc[-1] >= ibit["Open"].iloc[-1] else -est, 2)
     except: pass
     return 0.0
 
@@ -511,8 +493,57 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except: pass
     return 0.0001
 
-# --- AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE) ---
-def generate_local_self_learning_optimizations(df_archive, df_market, current_data):
+# --- AUTONOMES SELBSTLERN-SYSTEM & ADMIN-MODUL ---
+def evaluate_learning_data(df_archive, current_data):
+    stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0}
+    if df_archive is None or df_archive.empty or not current_data: return stats
+
+    for _, row in df_archive.iterrows():
+        parsed_dt = pd.to_datetime(row.get("Datum", ""), errors="coerce")
+        if pd.notnull(parsed_dt) and (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() < 86400: continue
+        
+        c_name = row.get("Coin", "")
+        price_then = float(row.get("Kurs_Damals", 0))
+        signal = str(row.get("Signal", "")).upper()
+        curr_price = current_data.get(c_name, {}).get("eur", 0)
+        
+        if price_then > 0 and curr_price > 0:
+            diff_pct = ((curr_price - price_then) / price_then) * 100
+            if "KAUF" in signal:
+                if diff_pct >= -1.5: stats["buy_wins"] += 1
+                else: stats["buy_fails"] += 1
+            elif "VORSICHT" in signal or "GEWINN" in signal:
+                if diff_pct <= 1.5: stats["sell_wins"] += 1
+                else: stats["sell_fails"] += 1
+    return stats
+
+def generate_admin_prompt(stats):
+    total_wins = stats["buy_wins"] + stats["sell_wins"]
+    total_fails = stats["buy_fails"] + stats["sell_fails"]
+    total_signals = total_wins + total_fails
+    win_rate = (total_wins / total_signals * 100) if total_signals > 0 else 0.0
+
+    prompt = f"""[SYSTEM-ANALYSE & PROMPT ZUR CODE-OPTIMIERUNG]
+Gesamte evaluierte Signale: {total_signals}
+Erfolge (Korrekt): {total_wins}
+Misserfolge (Falsch): {total_fails}
+Aktuelle KI-Trefferquote: {win_rate:.1f}%
+
+-> BITTE KOPIERE DEN FOLGENDEN TEXT UND GIB IHN AN EINE KI (Z.B. GEMINI/CHATGPT) WEITER, UM DEN CODE ZU VERBESSERN:
+
+"Hallo KI, analysiere die Performance meiner Krypto-App-Logik. Aktuell haben wir {total_wins} erfolgreiche und {total_fails} fehlerhafte Prognosen (Trefferquote: {win_rate:.1f}%). 
+Spezifischer Breakdown: Kauf-Erfolge: {stats['buy_wins']}, Kauf-Fehlschläge: {stats['buy_fails']} | Verkauf-Erfolge: {stats['sell_wins']}, Verkauf-Fehlschläge: {stats['sell_fails']}.
+
+Bitte schreibe die Funktion `generate_signal()` und `calculate_detailed_factor_scores()` in meiner `app.py` um. 
+Führe folgende komplexe Refaktorierungen durch:
+1. Passe die Multiplikatoren (Weights) für den Makro-Faktor und den RSI an die Fehlerverteilung an (bei vielen Kauf-Fehlschlägen RSI-Anforderungen strenger machen; bei Verkaufs-Fehlschlägen Funding-Rate höher gewichten).
+2. Justiere die Schwellenwerte (`t_sf`, `t_mf`, etc.) asymmetrisch: Erhöhe die Toleranz für Drawdowns in Aufwärtsmärkten basierend auf der 3-Jahres-Vola.
+3. Implementiere eine automatische Liquidations-Schutzlogik im Code, falls VIX über 25 steigt und gleichzeitig ETF-Abflüsse stattfinden.
+Gib mir den modifizierten Python-Code für diese Funktionen zurück."
+"""
+    return total_wins, total_fails, win_rate, prompt
+
+def generate_local_self_learning_optimizations(df_archive, current_data):
     default_weights = {
         "Trend & Momentum": 15.0, "ETF Net Flows": 15.0, "Makro (Zins/Aktien/Währung/VIX)": 15.0,
         "Fear & Greed Index": 15.0, "Funding Rates & Derivate": 15.0, "RSI & Volatilität": 10.0,
@@ -522,37 +553,19 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
     if df_archive is None or df_archive.empty or not current_data:
         return ("🧠 *Das 3-Jahres-Lernmodul sammelt aktuell historische Zyklen.*", default_weights)
 
-    buy_signals, sell_signals, failed_buys, failed_sells = 0, 0, 0, 0
-
-    for idx, row in df_archive.iterrows():
-        parsed_dt = pd.to_datetime(row.get("Datum", ""), errors="coerce")
-        if pd.notnull(parsed_dt):
-            now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
-            if (now_dt - parsed_dt).total_seconds() < 86400:
-                continue
-
-        c_name = row.get("Coin", "")
-        price_then = float(row.get("Kurs_Damals", 0))
-        signal = str(row.get("Signal", "")).upper()
-        curr_price = current_data.get(c_name, {}).get("eur", 0)
-        if price_then > 0 and curr_price > 0:
-            diff_pct = ((curr_price - price_then) / price_then) * 100
-            if "KAUF" in signal:
-                buy_signals += 1
-                if diff_pct < -1.5: failed_buys += 1
-            elif "VORSICHT" in signal or "GEWINN" in signal:
-                sell_signals += 1
-                if diff_pct > 1.5: failed_sells += 1
+    stats = evaluate_learning_data(df_archive, current_data)
+    buy_signals = stats["buy_wins"] + stats["buy_fails"]
+    sell_signals = stats["sell_wins"] + stats["sell_fails"]
 
     weights = default_weights.copy()
     optimizations = []
 
-    if buy_signals > 0 and (failed_buys / buy_signals) > 0.3:
+    if buy_signals > 0 and (stats["buy_fails"] / buy_signals) > 0.3:
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
         weights["Nachrichten & Zins-Sentiment"] += 1.0
         optimizations.append("⚠️ **Anpassung Kauf-Signale (3-Jahres-Basis):** Makro-, Zins- und News-Einfluss gestärkt.")
-    if sell_signals > 0 and (failed_sells / sell_signals) > 0.3:
+    if sell_signals > 0 and (stats["sell_fails"] / sell_signals) > 0.3:
         weights["Funding Rates & Derivate"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
@@ -564,7 +577,7 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
 #### 📊 3-Jahres Quant Self-Tuning (Autonome Gewichtungs-Optimierung)
 Basierend auf bis zu **3 Jahren (1.095 Tagen)** historischen Zyklen in `prediction_log.csv`:
 
-| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung (3-Jahres-Modus) |
+| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
 | :--- | :---: | :---: |
 | **Trend & Momentum** | 15,0 % | **{format_ger(weights['Trend & Momentum'], 1)} %** |
 | **ETF Net Flows (Spot)** | 15,0 % | **{format_ger(weights['ETF Net Flows'], 1)} %** |
@@ -741,6 +754,34 @@ def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, euro
     elif perf_val >= t_ms: return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
     else: return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
 
+# --- APP START & ADMIN-NACHRICHTENFENSTER ---
+current_data = get_current_data()
+df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
+
+learning_stats = evaluate_learning_data(df_archive_check, current_data)
+total_wins, total_fails, win_rate, admin_prompt = generate_admin_prompt(learning_stats)
+
+if "admin_msg_dismissed" not in st.session_state:
+    st.session_state.admin_msg_dismissed = False
+
+if not st.session_state.admin_msg_dismissed and (total_wins + total_fails) > 0:
+    with st.container(border=True):
+        st.markdown("### 🤖 Administrator-Konsole: Autonomes Lernsystem")
+        st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("✅ Erfolgreiche Prognosen", total_wins)
+        col2.metric("❌ Fehlsignale", total_fails)
+        col3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
+        
+        st.markdown("**KI-generierter Verbesserungsvorschlag (Copy & Paste):**")
+        st.code(admin_prompt, language="markdown")
+        
+        if st.button("Verstanden & Ausblenden", use_container_width=True):
+            st.session_state.admin_msg_dismissed = True
+            st.rerun()
+    st.markdown("---")
+
 # --- LIVE-DATEN ABRUFEN ---
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
@@ -754,12 +795,20 @@ news_score, top_headlines = get_news_sentiment_score()
 llama_data = get_defillama_metrics()
 btc_dom = get_btc_dominance()
 
-current_data = get_current_data()
-
-df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
 df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
+local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(df_archive_check, current_data)
 
-local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(df_archive_check, df_market_check, current_data)
+# KOPFBEREICH
+col_title, col_btn = st.columns([2, 1])
+with col_title:
+    st.markdown("### 🪙 Krypto-Kompass")
+with col_btn:
+    if st.button("🔄 Aktualisieren", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
+aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
+st.caption(f"Letztes Update: {aktuelle_zeit}")
 
 # EINSTELLUNGEN & INVESTITIONS-PLANUNG
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
@@ -1034,156 +1083,4 @@ with st.container(border=True):
             n_val, n_chg = asian_markets.get("Nikkei_225", {}).get("value", 0), asian_markets.get("Nikkei_225", {}).get("change", 0)
             h_val, h_chg = asian_markets.get("Hang_Seng", {}).get("value", 0), asian_markets.get("Hang_Seng", {}).get("change", 0)
             sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
-            st.write(f"🌏 **Nikkei 225:** {format_ger(n_val, 0)} ({format_ger(n_chg, 2, True)}%) | **Hang Seng:** {format_ger(h_val, 0)} ({format_ger(h_chg, 2, True)}%) | **Shanghai Comp:** {format_ger(sse_v, 0)} ({format_ger(sse_c, 2, True)}%)")
-
-        st.write("---")
-        st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
-        if top_headlines:
-            st.caption("Aktuelle Schlagzeilen:")
-            for h in top_headlines: st.markdown(f"- *{h}*")
-
-# --- KRYPTO-AKADEMIE & LERNPFAD ---
-st.write("")
-with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
-    st.markdown("""
-    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards für fundierte Entscheidungen nutzt.
-    
-    ---
-    
-    ### 🛡️ Modul 1: Risikomanagement & Stop-Loss (ATR)
-    * **Das Konzept:** Bevor du über Gewinne nachdenkst, musst du dein Kapital schützen. Der **Stop-Loss** ist eine automatische Notbremse.
-    * **Wie es in der App funktioniert:** Unter *Details, Analyse & Chart* siehst du den **ATR-Wert (Average True Range)**. Er misst die historische Schwankungsbreite. Die App berechnet daraus automatisch deinen Stop-Loss und Take-Profit, damit du Verluste im Ernstfall begrenzen kannst.
-    
-    ### 📉 Modul 2: Marktstimmung & Emotionen (Fear & Greed)
-    * **Das Konzept:** Märkte werden von Gier und Angst angetrieben. Warren Buffetts berühmte Regel lautet: *"Sei gierig, wenn andere panisch sind."*
-    * **Wie es in der App funktioniert:** Der **Fear & Greed Index** (ganz unten) zeigt dir den emotionalen Zustand des Marktes. 
-        * *Extreme Panik (Index < 25):* Oft historisch günstige Einstiegschancen.
-        * *Extreme Gier (Index > 75):* Höhere Gefahr von plötzlichen Kursrücksetzern / Gewinnmitnahmen.
-
-    ### 🌐 Modul 3: Makroökonomie & Institutionelle Flows
-    * **Das Konzept:** Kryptowährungen existieren nicht im Vakuum. Sie reagieren stark auf die globale Finanzwelt (Zinsen, US-Dollar, Aktien).
-    * **Wie es in der App funktioniert:** In den *Globalen Leitmärkten* siehst du US-Zinsen, den DXY (Dollar-Index) und vor allem die **Spot-ETF Nettoflüsse**. Wenn institutionelles Geld über ETFs einströmt, stützt das den Kurs massiv.
-
-    ### 📊 Modul 4: Technische Indikatoren (RSI & Signal-Score)
-    * **Das Konzept:** Mathematische Indikatoren helfen dabei, zu erkennen, ob ein Coin gerade "überkauft" oder "überverkauft" ist.
-    * **Wie es in der App funktioniert:** Der **RSI (Relative Strength Index)** zeigt Werte von 0 bis 100. Werte unter 30 signalisieren einen überverkauften Markt (Kaufchance), Werte über 70 deuten auf Überhitzung hin. Der finale **Signal-Score** bündelt alle diese Faktoren automatisch für dich.
-    """)
-
-# EXPANDER: AUTONOMES SELBSTLERN-SYSTEM (3 JAHRE)
-st.write("")
-with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)**", expanded=False):
-    st.markdown("Auswertung der protokollierten Prognosen über bis zu **3 Jahre (1.095 Tage)**.")
-
-    if os.path.exists(LOG_FILE):
-        try:
-            df_archive = pd.read_csv(LOG_FILE)
-            if "Datenquelle" not in df_archive.columns: df_archive["Datenquelle"] = "Binance Spot REST API"
-            if "Target_Horizon" not in df_archive.columns: df_archive["Target_Horizon"] = "7 Tage"
-            df_archive.to_csv(LOG_FILE, index=False)
-
-            if not df_archive.empty and current_data:
-                df_archive["ParsedDate"] = pd.to_datetime(df_archive["Datum"], errors="coerce")
-                df_archive_sorted = df_archive.sort_values(by="ParsedDate", ascending=False).copy()
-
-                all_coins = list(df_archive_sorted["Coin"].unique())
-                selected_filter = st.multiselect("🔍 Nach Coin filtern:", options=all_coins, default=all_coins)
-                df_filtered_view = df_archive_sorted[df_archive_sorted["Coin"].isin(selected_filter)]
-
-                comparison_rows, backtest_data = [], []
-                correct_hits, total_evaluated = 0, 0
-                sim_depot_signal, sim_depot_hold = 100.0, 100.0
-
-                monthly_stats = {}
-
-                for index, row in df_filtered_view.iterrows():
-                    c_name, kurs_damals, signal_damals, horizon = row["Coin"], float(row.get("Kurs_Damals", 0)), str(row.get("Signal", "")).upper(), str(row.get("Target_Horizon", "7 Tage"))
-                    parsed_dt = row["ParsedDate"]
-                    datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
-                    kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
-                    diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
-
-                    month_key = parsed_dt.strftime("%Y-%m") if pd.notnull(parsed_dt) else "Unbekannt"
-                    if month_key not in monthly_stats:
-                        monthly_stats[month_key] = {"trades": 0, "wins": 0, "total_diff": 0.0}
-
-                    is_today = False
-                    if pd.notnull(parsed_dt):
-                        now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
-                        if (now_dt - parsed_dt).total_seconds() < 86400:
-                            is_today = True
-
-                    if not is_today:
-                        if "KAUF" in signal_damals: sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
-                        sim_depot_hold *= 1.0 + (diff_pct / 100.0)
-
-                    dt_obj = parsed_dt if pd.notnull(parsed_dt) else pd.to_datetime(row["Datum"])
-                    backtest_data.append({"Datum": dt_obj, "App-Strategie": round(sim_depot_signal, 2), "Buy & Hold": round(sim_depot_hold, 2)})
-
-                    if is_today:
-                        evaluation = "Laufend ⏳"
-                    else:
-                        evaluation = "Neutral 🟡"
-                        if "KAUF" in signal_damals:
-                            total_evaluated += 1
-                            monthly_stats[month_key]["trades"] += 1
-                            if diff_pct > -1.5:
-                                correct_hits += 1
-                                monthly_stats[month_key]["wins"] += 1
-                                evaluation = "Treffer 🟢"
-                            else: evaluation = "Fehlsignal 🔴"
-                        elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
-                            total_evaluated += 1
-                            monthly_stats[month_key]["trades"] += 1
-                            if diff_pct < 1.5:
-                                correct_hits += 1
-                                monthly_stats[month_key]["wins"] += 1
-                                evaluation = "Schutz 🟢"
-                            else: evaluation = "Seitwärts 🟡"
-                    
-                    monthly_stats[month_key]["total_diff"] += diff_pct
-
-                    comparison_rows.append({"Datum": datum_formatted, "Coin": c_name, "Horizon": horizon, "Signal": signal_damals, "Kurs Damals": f"{format_ger(kurs_damals, 2 if kurs_damals >= 1 else 4)} €", "Aktuell": f"{format_ger(kurs_aktuell, 2 if kurs_aktuell >= 1 else 4)} €", "Diff (%)": format_ger(diff_pct, 2, True) + " %", "Auswertung": evaluation})
-
-                st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
-
-                st.write("---")
-                st.markdown("##### 📅 Monatlicher Performance- & Gewinn-Report")
-                monthly_rows = []
-                for m_key, m_val in sorted(monthly_stats.items(), reverse=True):
-                    t_count = m_val["trades"]
-                    w_count = m_val["wins"]
-                    win_rate = (w_count / t_count * 100) if t_count > 0 else 0.0
-                    monthly_rows.append({
-                        "Monat": m_key,
-                        "Ausgewertete Signale": t_count,
-                        "Erfolgreich": w_count,
-                        "Trefferquote": f"{format_ger(win_rate, 1)} %",
-                        "Ø Kurs-Performance": f"{format_ger(m_val['total_diff'] / max(1, t_count), 2, True)} %"
-                    })
-                st.dataframe(pd.DataFrame(monthly_rows), use_container_width=True, hide_index=True)
-
-                st.write("---")
-                st.markdown("##### 📈 Backtest-Vergleich")
-                df_bt = pd.DataFrame(backtest_data)
-                if not df_bt.empty:
-                    df_bt_melted = df_bt.melt(id_vars=["Datum"], value_vars=["App-Strategie", "Buy & Hold"], var_name="Strategie", value_name="Wert")
-                    st.altair_chart(alt.Chart(df_bt_melted).mark_line(strokeWidth=2).encode(x=alt.X("Datum:T", title=None, sort=None), y=alt.Y("Wert:Q", title="Depotwert (€)", scale=alt.Scale(zero=False)), color=alt.Color("Strategie:N", scale=alt.Scale(domain=["App-Strategie", "Buy & Hold"], range=["#2ecc71", "#e74c3c"])), tooltip=["Datum:T", "Strategie", "Wert"]).properties(height=220).interactive(), use_container_width=True)
-
-                if total_evaluated > 0: st.metric("Signal-Trefferquote", f"{format_ger((correct_hits / total_evaluated) * 100, 1)}%", f"{correct_hits} von {total_evaluated} Zyklen erfolgreich")
-
-                st.write("---")
-                st.markdown(local_learning_report)
-
-                st.write("---")
-                st.markdown("##### 💾 CSV-Export & Backup")
-                col_d1, col_d2, col_d3 = st.columns(3)
-                if os.path.exists(LOG_FILE):
-                    with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
-                if os.path.exists(MARKET_LOG_FILE):
-                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
-                if os.path.exists(IMP_FILE):
-                    with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
-        except Exception as e: st.warning(f"Fehler: {e}")
-
-st.markdown("---")
-st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
+            st.write(f"🌏 **Nikkei 225:** {format_
