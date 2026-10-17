@@ -449,7 +449,6 @@ def calculate_atr(symbol, current_price=0.0, limit=30):
             val = float(df["tr"].rolling(window=14).mean().iloc[-1])
             if val > 0: return val
     except: pass
-    # Robuster Fallback: 3% des aktuellen Preises als realistische ATR
     if current_price > 0:
         return current_price * 0.03
     return 0.0
@@ -898,9 +897,11 @@ if current_data and len(current_data) > 0:
 
                     if df_history is not None and not df_history.empty:
                         df_chart = df_history.reset_index().copy()
-                        if len(df_chart) >= 5: df_chart["EMA"] = df_chart["Kurs"].ewm(span=min(20, len(df_chart)), adjust=False).mean()
+                        if len(df_chart) >= 5: 
+                            df_chart["EMA"] = df_chart["Kurs"].ewm(span=min(10, len(df_chart)), adjust=True).mean()
+                        
                         min_p, max_p = df_chart["Kurs"].min(), df_chart["Kurs"].max()
-                        puffer = (max_p - min_p) * 0.15 if max_p != min_p else min_p * 0.02
+                        puffer = (max_p - min_p) * 0.08 if max_p != min_p else min_p * 0.01
                         chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
 
                         date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m." if zeitraum_wahl in ["7 Tage", "30 Tage"] else "%b %y")
@@ -910,12 +911,13 @@ if current_data and len(current_data) > 0:
                             x=alt.X("Timestamp:T", title=None, axis=alt.Axis(format=date_format, labelAngle=0, grid=True, gridDash=[2, 2], gridColor="rgba(150, 150, 150, 0.15)", tickCount=6)),
                             y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)"))
                         )
-                        chart_layers = base.mark_area(opacity=0.12, color=chart_color) + base.mark_line(color=chart_color, strokeWidth=2)
+                        chart_layers = base.mark_area(opacity=0.15, color=chart_color, interpolate="monotone") + base.mark_line(color=chart_color, strokeWidth=2.2, interpolate="monotone")
                         if "EMA" in df_chart.columns: 
-                            chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3]).encode(y=alt.Y("EMA:Q"))
+                            chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3], interpolate="monotone").encode(y=alt.Y("EMA:Q"))
                         
                         tooltip_format = ",.4f €" if max_p < 1 else ",.2f €"
-                        st.altair_chart((chart_layers + base.mark_point(size=40, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format="%d.%m.%Y %H:%M"), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
+                        tooltip_time_format = "%d.%m.%Y %H:%M" if zeitraum_wahl != "24 Stunden" else "%H:%M Uhr"
+                        st.altair_chart((chart_layers + base.mark_point(size=45, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format=tooltip_time_format), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
