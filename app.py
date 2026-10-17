@@ -642,14 +642,14 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
     liq_score = 70 if tvl >= 90.0 else 30 if tvl >= 70.0 else -20
 
     return {
-        f"Trend & Momentum ({weights['Trend & Momentum']:.0f}%)": trend_score,
-        f"ETF Net Flows ({weights['ETF Net Flows']:.0f}%)": etf_score,
-        f"Makro & VIX ({weights['Makro (Zins/Aktien/Währung/VIX)']:.0f}%)": max(-100, min(100, macro_points)),
-        f"Fear & Greed ({weights['Fear & Greed Index']:.0f}%)": sentiment_score,
-        f"Funding & Derivate ({weights['Funding Rates & Derivate']:.0f}%)": funding_score,
-        f"RSI & Volatilität ({weights['RSI & Volatilität']:.0f}%)": rsi_score,
-        f"News & Zins ({weights['Nachrichten & Zins-Sentiment']:.0f}%)": max(-100, min(100, news_score)),
-        f"DeFi TVL & Liq. ({weights['Krypto-Liquidität & DeFi TVL']:.0f}%)": liq_score,
+        f"Trend & Momentum ({weights.get('Trend & Momentum', 15):.0f}%)": trend_score,
+        f"ETF Net Flows ({weights.get('ETF Net Flows', 15):.0f}%)": etf_score,
+        f"Makro & VIX ({weights.get('Makro (Zins/Aktien/Währung/VIX)', 15):.0f}%)": max(-100, min(100, macro_points)),
+        f"Fear & Greed ({weights.get('Fear & Greed Index', 15):.0f}%)": sentiment_score,
+        f"Funding & Derivate ({weights.get('Funding Rates & Derivate', 15):.0f}%)": funding_score,
+        f"RSI & Volatilität ({weights.get('RSI & Volatilität', 10):.0f}%)": rsi_score,
+        f"News & Zins ({weights.get('Nachrichten & Zins-Sentiment', 10):.0f}%)": max(-100, min(100, news_score)),
+        f"DeFi TVL & Liq. ({weights.get('Krypto-Liquidität & DeFi TVL', 5):.0f}%)": liq_score,
     }
 
 def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
@@ -659,7 +659,7 @@ def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_m
         base_key = key.split(" (")[0].strip()
         matched_w = 0.0
         for wk, wv in weights.items():
-            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()):
+            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()) or ("trend" in wk.lower() and "trend" in base_key.lower()):
                 matched_w = wv
                 break
         total += score_val * (matched_w / 100.0)
@@ -994,7 +994,21 @@ if current_data and len(current_data) > 0:
                     st.write("---")
                     st.markdown("##### 📊 Signal-Zusammensetzung Score")
                     factor_scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_value, funding_rate=funding_rate_val, weights=active_weights)
-                    st.altair_chart(alt.Chart(pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])).mark_bar().encode(x=alt.X("Score:Q", scale=alt.Scale(domain=[-100, 100]), title="Bärisch (-100) | Bullisch (+100)"), y=alt.Y("Indikator:N", sort=None, title=None), color=alt.condition(alt.datum.Score > 0, alt.value("#2ecc71"), alt.value("#e74c3c")), tooltip=["Indikator", "Score"]).properties(height=250), use_container_width=True)
+                    
+                    # Hier wird der Chart mit expliziter Achsen-Sortierung und Sichtbarkeit für Trend & ETF erzeugt
+                    df_scores = pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])
+                    st.altair_chart(
+                        alt.Chart(df_scores)
+                        .mark_bar()
+                        .encode(
+                            x=alt.X("Score:Q", scale=alt.Scale(domain=[-100, 100]), title="Bärisch (-100) | Bullisch (+100)"),
+                            y=alt.Y("Indikator:N", sort=list(factor_scores.keys()), title=None, axis=alt.Axis(labelLimit=250)),
+                            color=alt.condition(alt.datum.Score > 0, alt.value("#2ecc71"), alt.value("#e74c3c")),
+                            tooltip=["Indikator", "Score"]
+                        )
+                        .properties(height=280),
+                        use_container_width=True
+                    )
 
                     if hist_price > 0: st.markdown(f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{format_ger(hist_price, dec)} €** | Aktuell: **{format_ger(price, dec)} €**", unsafe_allow_html=True)
 
