@@ -510,7 +510,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except: pass
     return 0.0001
 
-# --- SELBSTLERN-LOGIK (INTERN) ---
+# --- VERBESSERTE QUANT- & Z-SCORE PROGNOSE-LOGIK ---
 def evaluate_learning_data(df_archive, current_data):
     stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0}
     if df_archive is None or df_archive.empty or not current_data: return stats
@@ -542,7 +542,7 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
     }
 
     if df_archive is None or df_archive.empty or not current_data:
-        return ("🧠 *Das 3-Jahres-Lernmodul sammelt aktuell historische Zyklen.*", default_weights)
+        return ("🧠 *Das Quant-Lernmodul analysiert historische Zyklen.*", default_weights)
 
     stats = evaluate_learning_data(df_archive, current_data)
     buy_signals = stats["buy_wins"] + stats["buy_fails"]
@@ -555,18 +555,18 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
         weights["Nachrichten & Zins-Sentiment"] += 1.0
-        optimizations.append("⚠️ **Anpassung Kauf-Signale (3-Jahres-Basis):** Makro-, Zins- und News-Einfluss gestärkt.")
+        optimizations.append("⚠️ **Adaptive Anpassung Kauf-Signale:** Makro- und Zins-Einfluss dynamisch gestärkt.")
     if sell_signals > 0 and (stats["sell_fails"] / sell_signals) > 0.3:
         weights["Funding Rates & Derivate"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
-        optimizations.append("⚠️ **Anpassung Verkauf-Signale (3-Jahres-Basis):** Derivate-Raten & RSI höher gewichtet.")
+        optimizations.append("⚠️ **Adaptive Anpassung Verkauf-Signale:** Derivate-Raten & RSI höher gewichtet.")
     if not optimizations:
-        optimizations.append("✅ **3-Jahres-System-Status Optimal:** Langfrist-Gewichtungen stabil.")
+        optimizations.append("✅ **Quant-System-Status Optimal:** Gewichtungen stabil.")
 
     report = f"""
-#### 📊 3-Jahres Quant Self-Tuning (Autonome Gewichtungs-Optimierung)
-Basierend auf bis zu **3 Jahren (1.095 Tagen)** historischen Zyklen in `prediction_log.csv`:
+#### 📊 Quant Self-Tuning (Dynamische Gewichtungs-Optimierung)
+Basierend auf historischen Zyklen in `prediction_log.csv`:
 
 | Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
 | :--- | :---: | :---: |
@@ -579,7 +579,7 @@ Basierend auf bis zu **3 Jahren (1.095 Tagen)** historischen Zyklen in `predicti
 | **Nachrichten & Zins-Sentiment** | 10,0 % | **{format_ger(weights['Nachrichten & Zins-Sentiment'], 1)} %** |
 | **DeFi TVL & Liq.** | 5,0 % | **{format_ger(weights['Krypto-Liquidität & DeFi TVL'], 1)} %** |
 
-##### 💡 3-Jahres Langfrist-Erkenntnisse & Anpassungen:
+##### 💡 System-Erkenntnisse:
 """ + "\n".join([f"- {opt}" for opt in optimizations])
 
     return report, weights
@@ -766,44 +766,35 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
             "FearGreed": fg_val, "Target_Horizon": target_horizon, "Datenquelle": "Binance Spot REST API"
         }]))
 
-def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, zeitraum, weights, rsi_val=None, funding_rate=None):
-    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, perf_val, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
-    
+# VERBESSERTE SIGNAL-LOGIK (Z-SCORE & STATISTISCHE STANDARDABWEICHUNG)
+def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, zeitraum, weights, rsi_val=None, funding_rate=None):
+    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
-    volatility_buffer_factor = 1.25 if (vix_val < 22.0 and macro_score >= 0) else 1.0
 
-    if zeitraum == "24 Stunden": 
-        t_sf, t_mf, t_ms, t_ss = -7.5 * volatility_buffer_factor, -3.0, 3.5, 7.5
-    elif zeitraum == "7 Tage": 
-        t_sf, t_mf, t_ms, t_ss = -14.5 * volatility_buffer_factor, -5.5, 5.5, 13.0
-    elif zeitraum == "30 Tage": 
-        t_sf, t_mf, t_ms, t_ss = -25.0 * volatility_buffer_factor, -9.5, 9.0, 22.0
-    elif zeitraum == "90 Tage": 
-        t_sf, t_mf, t_ms, t_ss = -36.0 * volatility_buffer_factor, -13.0, 13.0, 32.0
-    elif zeitraum == "6 Monate": 
-        t_sf, t_mf, t_ms, t_ss = -50.0 * volatility_buffer_factor, -18.0, 18.0, 45.0
-    elif zeitraum == "1 Jahr": 
-        t_sf, t_mf, t_ms, t_ss = -65.0 * volatility_buffer_factor, -24.0, 25.0, 60.0
-    elif zeitraum == "2 Jahre": 
-        t_sf, t_mf, t_ms, t_ss = -85.0 * volatility_buffer_factor, -35.0, 40.0, 90.0
-    elif zeitraum == "3 Jahre": 
-        t_sf, t_mf, t_ms, t_ss = -105.0 * volatility_buffer_factor, -45.0, 60.0, 150.0
-    else: 
-        t_sf, t_mf, t_ms, t_ss = -130.0 * volatility_buffer_factor, -55.0, 80.0, 250.0  # 5 Jahre
+    # Statistischer Z-Score basierend auf historischen Kursen
+    if hist_prices is not None and len(hist_prices) >= 10:
+        series = pd.Series(hist_prices)
+        ma = series.rolling(window=min(15, len(series))).mean().iloc[-1]
+        std = series.rolling(window=min(15, len(series))).std().iloc[-1]
+        z_score = (price - ma) / std if std > 0 else 0.0
+    else:
+        z_score = 0.0
 
-    if vix_val > 25.0 and etf_net_flow < 0.0 and perf_val <= t_mf:
-        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse ({format_ger(etf_net_flow, 1)}M $) trotz Kursrücksetzer ({zeitraum}).")
+    risk_off = (vix_val > 25.0) and (etf_net_flow < 0)
 
-    if perf_val <= t_sf and macro_score >= 0 and (rsi_val is None or rsi_val <= 35): 
-        return ("STARKE KAUFCHANCE 🟢🟢", f"Strikte RSI- & Makro-Prüfung bestanden. Deutlicher Kursrücksetzer ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
-    elif perf_val <= t_mf and macro_score >= 0: 
-        return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%) bei stabilem Makro-Umfeld.")
-    elif perf_val >= t_ss and (fg_value >= 75 or macro_score < 0): 
-        return ("GEWINNE SICHERN 🔴🔴", f"Starker Preissprung ({zeitraum}: {format_ger(perf_val, 1, True)}%) bei Überhitzung.")
-    elif perf_val >= t_ms: 
-        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
-    else: 
-        return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
+    if risk_off and z_score < -1.2:
+        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse trotz statistischem Rücksetzer (Z-Score: {z_score:.2f}).")
+
+    if z_score <= -1.8 and macro_score >= 0 and (rsi_val is None or rsi_val <= 33) and not risk_off:
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) in gesundem Makro-Umfeld.")
+    elif z_score <= -0.9 and macro_score >= 0 and not risk_off:
+        return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) bei stabilem Makro.")
+    elif (z_score >= 1.8 or fg_value >= 75) and (macro_score < 0 or fg_value >= 80):
+        return ("GEWINNE SICHERN 🔴🔴", f"Starke statistische Überdehnung nach oben (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).")
+    elif z_score >= 1.0:
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs, deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).")
+    else:
+        return ("HALTEN 🟡", f"Konsolidierungsphase im fairen statistischen Bereich (Z-Score: {z_score:.2f}).")
 
 # --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
@@ -850,7 +841,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
     st.write("---")
-    manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert KI-Automatik)", value=False)
+    manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert Quant-Automatik)", value=False)
     if manuelle_gewichtung:
         col_w1, col_w2, col_w3, col_w4 = st.columns(4)
         active_weights = {
@@ -911,11 +902,13 @@ if current_data and len(current_data) > 0:
 
             df_history = get_historical_data(symbol, limit_anzahl, interval, weekly=wöchentlich)
             perf_val, hist_price = 0.0, 0.0
+            hist_prices_list = []
             if df_history is not None and not df_history.empty:
                 hist_price = df_history.iloc[0]["Kurs"]
+                hist_prices_list = df_history["Kurs"].tolist()
                 if hist_price > 0: perf_val = ((price - hist_price) / hist_price) * 100
 
-            signal, reason = generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, zeitraum_wahl, active_weights, rsi_val=rsi_value, funding_rate=funding_rate_val)
+            signal, reason = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, zeitraum_wahl, active_weights, rsi_val=rsi_value, funding_rate=funding_rate_val)
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
             log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
