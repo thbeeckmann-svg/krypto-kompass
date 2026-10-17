@@ -1,45 +1,46 @@
-Änderungsdatum,Titel,Beschreibung
-11.10.2026,Dynamische Portfolio-Kapitalallokation (Multi-Asset Sizing),Automatische Aufteilung des Gesamt-Tranchenbudgets auf ausgewählte Coins nach Signalstärke. Verhindert Über-Allokation bei mehreren Kaufsignalen.
-11.10.2026,Echte Indikatoren: RSI (14) & Binance Funding Rates,Direkte Integration von echtem RSI(14) aus Binance-Klines und echten Futures Funding Rates in den Composite Signal-Score.
-11.10.2026,Erweiterung um Cardano & Bitcoin Cash,Integration von Cardano (ADAEUR) und Bitcoin Cash (BCHEUR) in die Coin-Auswahl und Binance-Live-Abfragen.
-05.10.2026,Dynamische Chart-Labels für exakte Null-Werte,Das Balkendiagramm wurde um sichtbare Text-Labels und graue Einfärbungen für 0-Werte erweitert.
-05.10.2026,Integration globaler Leitmärkte & Datenbereinigung,"S&P 500 und DAX ergänzt, in den Signal-Score aufgenommen. 'nan'-Werte im Makro-Archiv durch saubere Platzhalter ersetzt."
-05.10.2026,Integration erweiterter Makro- & Rohstoffquellen,"Automatischer Live-Abruf und Logging von US Dollar Index (DXY), EUR/USD, Gold-Spot und WTI-Rohöl über Yahoo Finance."
-05.10.2026,Erweiterte CSV-Deduplizierung,Automatisches Erkennen und Bereinigen von Mehrfacheinträgen im Verbesserungsprotokoll.
-05.10.2026,Streamlit UI & Layout Standardisierung,Vollständige Umstellung veralteter Container-Breiten auf den modernen Standard width='stretch'.
-05.10.2026,Automatische Datenquellen-Bereinigung,Alte 'None'- oder Leerwerte in der Spalte Datenquelle werden beim Einlesen automatisch korrigiert und bereinigt.
-04.10.2026,Investitions-Entscheidungsformel & Ampel-Logik,Mathematische Verknüpfung der geplanten Tranche mit den Marktsignalen.
-04.10.2026,CSV-Export & Backup-Funktionen,"Download-Buttons im Archiv-Bereich zur lokalen Sicherung aller Prognose-, Markt- und Verbesserungsprotokolle."
-04.10.2026,Backtest-Visualisierung im Dashboard,Interaktiver Altair-Chart zum direkten Vergleich der kumulierten App-Signale gegen eine klassische Buy-and-Hold-Anlage.
-04.10.2026,Investitions-Entscheidungsformel (Kaufen / Halten / Vorsicht),Mathematische Verknüpfung der geplanten Tranche mit den Marktsignalen zur exakten Euro- und Stück-Handelsempfehlung.
-04.10.2026,CSV-Export & Backup-Funktionen (Punkt 6),"Download-Buttons im Archiv-Bereich zur lokalen Sicherung aller Prognose-, Markt- und Verbesserungsprotokolle."
-04.10.2026,Backtest-Visualisierung im Dashboard (Punkt 5),Interaktiver Altair-Chart zum direkten Vergleich der kumulierten App-Signale gegen eine klassische Buy-and-Hold-Strategie.
-04.10.2026,Schnellwahl für feste Investitionssummen (Tranchen),"Auswahlfenster in der Sidebar für feste Tranchen (100 €, 500 €, 1.000 € etc.) zur sofortigen Positions- und Stückberechnung."
-04.10.2026,Positionsgrößen-Rechner (Asset Allocation & Risikomanagement),Automatisierte Berechnung der optimalen Positionsgröße in € und Coin-Einheiten basierend auf Gesamtkapital und Signalstärke.
-04.10.2026,On-Chain-Wal-Tracker,Automatische Erkennung von Volumen- und Preis-Anomalien als Frühwarnsignal für institutionellen Verkaufsdruck direkt in der Signal-Logik verankert.
-04.10.2026,Zeitraum-adaptive Signale,"Das empfohlene Signal und die KI-Begründung passen sich automatisch an den gewählten Rückblick-Zeitraum (24h, 7T, 30T, 90T) an."
-04.10.2026,Chronologischer Makro-Datenlogger,"Speichert Zinsdaten (US 10J), Fear & Greed Index sowie Marktdaten chronologisch in einer separaten Datei (market_data_log.csv) ab."
-04.10.2026,Selbstlernende Makro-Analyse,Automatische Korrelationsprüfung der Makrodaten mit Querverweisen und Vorschlägen für neue Wirtschaftsdatenquellen.
-04.10.2026,Selbstlernende Makro-Analyse mit Europa-Fokus,Automatische Korrelationsprüfung der Makrodaten inklusive US- und europäischen Wirtschafts- und EZB-Signalen.
-04.10.2026,EZB-Leitzins & Geldpolitik,Integration europäischer Zins- und Liquiditätssignale für EUR-Handelspaare.
-04.10.2026,Eurozone HVPI & Inflation,Integration von Eurostat-Verbraucherpreisdaten zur Beschleunigungsanalyse geldpolitischer Lockerungen.
-04.10.2026,Orderbuch-Ungleichgewicht (Depth API),Einbindung von Binance Orderbuch-Tiefendaten zur Früherkennung von kurzfristigem Verkaufsdruck.
-04.10.2026,Finanzierungsraten (Funding Rates),Integration von Perpetual Swap Funding Rates zum Filtern übertriebener Hebelpositionen (Squeezes).
-04.10.2026,Dynamische Schwellenwert-Anpassung,Automatische Anhebung der prozentualen Kaufauslöser in volatilen Marktphasen zur Reduzierung von Fehlsignalen.
-04.10.2026,Automatisierter 5-Minuten-Refresh & Zeitstempel,Integriertes Polling-Intervall mit sekundengenauer Anzeige des letzten Update-Zeitpunkts.
-04.10.2026,Automatisierter Cache & Quellen-Dokumentation,Automatische Prüfung und Aktualisierung beim Tageswechsel oder manuell per Button mit transparenter Quellen- und Zeitstempel-Anzeige.
-04.10.2026,Präziser Zeit- und Quellenabgleich,Jeder Datenabruf wird sekundengenau mit exakter API-Quellenangabe protokolliert.
-01.06.2026,Dynamische Live-Aktualisierung des Logs,Tagesaktuelle Log-Einträge werden bei jedem Abruf automatisch mit sekundengenauer Uhrzeit aktualisiert.
-04.10.2026,KI-gestützte Optimierungsanalyse,Automatisierte Auswertung der Prognose-Trefferquoten über OpenAI API zur dynamischen Anpassung.
-04.10.2026,Historisches Makro- & Stimmungsdaten-Archiv,Lückenlose 365-Tage-Protokollierung von Fear & Greed Index und US-Anleihen inklusive genauer Herkunftsquellen und Marktauswirkungs-Analyse.
-04.10.2026,Erweiterte Makro-KI-Auswertung & Metriken,Automatische Trefferquoten-Berechnung und KI-gestützte Optimierung für das historische Makro- und Stimmungsdaten-Archiv ergänzt.
-04.10.2026,Integration asiatischer Leitmärkte (Nikkei & Hang Seng),Erweiterung der Makro-Analyse um asiatische Börsenindizes zur besseren Erfassung der globalen Risk-On/Risk-Off-Frühindikation.
-04.10.2026,Integration Euroraum-Marktdaten (EuroStoxx 50),Aufnahme von europäischen Konjunktur- und Leitindexdaten über Yahoo Finance (^STOXX50E) zur Schließung der regionalen Makro-Lücke.
-04.10.2026,Visuelle Aufschlüsselung des Composite-Scores,Grafische Aufbereitung aller 6 Teil-Indikatoren im Dashboard zur transparenten Nachvollziehbarkeit der Signalzusammensetzung.
-04.10.2026,KI Self-Tuning der Indikator-Gewichtungen,Automatisierte Anpassungsvorschläge der 6 Teil-Gewichtungen über OpenAI zur Optimierung der Trefferquote basierend auf Fehlentscheidungen.
-04.10.2026,Autonomes Quant-Self-Tuning Module,"Vollständig lokales, algorithmisches Lernsystem zur Auswertung von Fehlsignalen und mathematischer Optimierung der Gewichtungen."
-04.10.2026,Optimierte 5-Jahres-Indikator-Gewichtung,Erhöhung der Makro- und ETF-Gewichtung (je 20%) und Reduzierung von purem Momentum zur besseren Abbildung des institutionalisierten Marktverhaltens.
-04.10.2026,Aktive Kopplung der Lern-Gewichtungen an Live-Signale,Die vom autonomen Lernmodul gelernten Indikator-Gewichtungen fließen direkt in die Berechnung der Live-Signale und des Dashboard-Charts ein.
-04.10.2026,Integration ECHTER US Spot-ETF Netto-Zuflüsse,Direkte Einbindung tagesaktueller Spot-ETF Netto-Zuflüsse in Millionen USD über Coinglass/Farside anstelle von Volumen-Proxies.
-04.10.2026,Vollständig lokaler Autonomie-Modus,Umstellung des Self-Tuning-Moduls auf eine reine Python-Datenanalyse in den lokalen CSV-Logs ohne externe API-Keys.
-04.10.2026,Dynamischer ATR Volatilitäts- & Stop-Loss-Rechner,Berechnung der Average True Range (ATR) für jedes Asset zur automatischen Ausweisung präziser Stop-Loss- und Take-Profit-Marken.
+Änderungsdatum,Titel,Beschreibung,Datum,Aktion,Trefferquote,Erfolgreich,Fehler
+11.10.2026,Dynamische Portfolio-Kapitalallokation (Multi-Asset Sizing),Automatische Aufteilung des Gesamt-Tranchenbudgets auf ausgewählte Coins nach Signalstärke. Verhindert Über-Allokation bei mehreren Kaufsignalen.,,,,,
+11.10.2026,Echte Indikatoren: RSI (14) & Binance Funding Rates,Direkte Integration von echtem RSI(14) aus Binance-Klines und echten Futures Funding Rates in den Composite Signal-Score.,,,,,
+11.10.2026,Erweiterung um Cardano & Bitcoin Cash,Integration von Cardano (ADAEUR) und Bitcoin Cash (BCHEUR) in die Coin-Auswahl und Binance-Live-Abfragen.,,,,,
+05.10.2026,Dynamische Chart-Labels für exakte Null-Werte,Das Balkendiagramm wurde um sichtbare Text-Labels und graue Einfärbungen für 0-Werte erweitert.,,,,,
+05.10.2026,Integration globaler Leitmärkte & Datenbereinigung,"S&P 500 und DAX ergänzt, in den Signal-Score aufgenommen. 'nan'-Werte im Makro-Archiv durch saubere Platzhalter ersetzt.",,,,,
+05.10.2026,Integration erweiterter Makro- & Rohstoffquellen,"Automatischer Live-Abruf und Logging von US Dollar Index (DXY), EUR/USD, Gold-Spot und WTI-Rohöl über Yahoo Finance.",,,,,
+05.10.2026,Erweiterte CSV-Deduplizierung,Automatisches Erkennen und Bereinigen von Mehrfacheinträgen im Verbesserungsprotokoll.,,,,,
+05.10.2026,Streamlit UI & Layout Standardisierung,Vollständige Umstellung veralteter Container-Breiten auf den modernen Standard width='stretch'.,,,,,
+05.10.2026,Automatische Datenquellen-Bereinigung,Alte 'None'- oder Leerwerte in der Spalte Datenquelle werden beim Einlesen automatisch korrigiert und bereinigt.,,,,,
+04.10.2026,Investitions-Entscheidungsformel & Ampel-Logik,Mathematische Verknüpfung der geplanten Tranche mit den Marktsignalen.,,,,,
+04.10.2026,CSV-Export & Backup-Funktionen,"Download-Buttons im Archiv-Bereich zur lokalen Sicherung aller Prognose-, Markt- und Verbesserungsprotokolle.",,,,,
+04.10.2026,Backtest-Visualisierung im Dashboard,Interaktiver Altair-Chart zum direkten Vergleich der kumulierten App-Signale gegen eine klassische Buy-and-Hold-Anlage.,,,,,
+04.10.2026,Investitions-Entscheidungsformel (Kaufen / Halten / Vorsicht),Mathematische Verknüpfung der geplanten Tranche mit den Marktsignalen zur exakten Euro- und Stück-Handelsempfehlung.,,,,,
+04.10.2026,CSV-Export & Backup-Funktionen (Punkt 6),"Download-Buttons im Archiv-Bereich zur lokalen Sicherung aller Prognose-, Markt- und Verbesserungsprotokolle.",,,,,
+04.10.2026,Backtest-Visualisierung im Dashboard (Punkt 5),Interaktiver Altair-Chart zum direkten Vergleich der kumulierten App-Signale gegen eine klassische Buy-and-Hold-Strategie.,,,,,
+04.10.2026,Schnellwahl für feste Investitionssummen (Tranchen),"Auswahlfenster in der Sidebar für feste Tranchen (100 €, 500 €, 1.000 € etc.) zur sofortigen Positions- und Stückberechnung.",,,,,
+04.10.2026,Positionsgrößen-Rechner (Asset Allocation & Risikomanagement),Automatisierte Berechnung der optimalen Positionsgröße in € und Coin-Einheiten basierend auf Gesamtkapital und Signalstärke.,,,,,
+04.10.2026,On-Chain-Wal-Tracker,Automatische Erkennung von Volumen- und Preis-Anomalien als Frühwarnsignal für institutionellen Verkaufsdruck direkt in der Signal-Logik verankert.,,,,,
+04.10.2026,Zeitraum-adaptive Signale,"Das empfohlene Signal und die KI-Begründung passen sich automatisch an den gewählten Rückblick-Zeitraum (24h, 7T, 30T, 90T) an.",,,,,
+04.10.2026,Chronologischer Makro-Datenlogger,"Speichert Zinsdaten (US 10J), Fear & Greed Index sowie Marktdaten chronologisch in einer separaten Datei (market_data_log.csv) ab.",,,,,
+04.10.2026,Selbstlernende Makro-Analyse,Automatische Korrelationsprüfung der Makrodaten mit Querverweisen und Vorschlägen für neue Wirtschaftsdatenquellen.,,,,,
+04.10.2026,Selbstlernende Makro-Analyse mit Europa-Fokus,Automatische Korrelationsprüfung der Makrodaten inklusive US- und europäischen Wirtschafts- und EZB-Signalen.,,,,,
+04.10.2026,EZB-Leitzins & Geldpolitik,Integration europäischer Zins- und Liquiditätssignale für EUR-Handelspaare.,,,,,
+04.10.2026,Eurozone HVPI & Inflation,Integration von Eurostat-Verbraucherpreisdaten zur Beschleunigungsanalyse geldpolitischer Lockerungen.,,,,,
+04.10.2026,Orderbuch-Ungleichgewicht (Depth API),Einbindung von Binance Orderbuch-Tiefendaten zur Früherkennung von kurzfristigem Verkaufsdruck.,,,,,
+04.10.2026,Finanzierungsraten (Funding Rates),Integration von Perpetual Swap Funding Rates zum Filtern übertriebener Hebelpositionen (Squeezes).,,,,,
+04.10.2026,Dynamische Schwellenwert-Anpassung,Automatische Anhebung der prozentualen Kaufauslöser in volatilen Marktphasen zur Reduzierung von Fehlsignalen.,,,,,
+04.10.2026,Automatisierter 5-Minuten-Refresh & Zeitstempel,Integriertes Polling-Intervall mit sekundengenauer Anzeige des letzten Update-Zeitpunkts.,,,,,
+04.10.2026,Automatisierter Cache & Quellen-Dokumentation,Automatische Prüfung und Aktualisierung beim Tageswechsel oder manuell per Button mit transparenter Quellen- und Zeitstempel-Anzeige.,,,,,
+04.10.2026,Präziser Zeit- und Quellenabgleich,Jeder Datenabruf wird sekundengenau mit exakter API-Quellenangabe protokolliert.,,,,,
+01.06.2026,Dynamische Live-Aktualisierung des Logs,Tagesaktuelle Log-Einträge werden bei jedem Abruf automatisch mit sekundengenauer Uhrzeit aktualisiert.,,,,,
+04.10.2026,KI-gestützte Optimierungsanalyse,Automatisierte Auswertung der Prognose-Trefferquoten über OpenAI API zur dynamischen Anpassung.,,,,,
+04.10.2026,Historisches Makro- & Stimmungsdaten-Archiv,Lückenlose 365-Tage-Protokollierung von Fear & Greed Index und US-Anleihen inklusive genauer Herkunftsquellen und Marktauswirkungs-Analyse.,,,,,
+04.10.2026,Erweiterte Makro-KI-Auswertung & Metriken,Automatische Trefferquoten-Berechnung und KI-gestützte Optimierung für das historische Makro- und Stimmungsdaten-Archiv ergänzt.,,,,,
+04.10.2026,Integration asiatischer Leitmärkte (Nikkei & Hang Seng),Erweiterung der Makro-Analyse um asiatische Börsenindizes zur besseren Erfassung der globalen Risk-On/Risk-Off-Frühindikation.,,,,,
+04.10.2026,Integration Euroraum-Marktdaten (EuroStoxx 50),Aufnahme von europäischen Konjunktur- und Leitindexdaten über Yahoo Finance (^STOXX50E) zur Schließung der regionalen Makro-Lücke.,,,,,
+04.10.2026,Visuelle Aufschlüsselung des Composite-Scores,Grafische Aufbereitung aller 6 Teil-Indikatoren im Dashboard zur transparenten Nachvollziehbarkeit der Signalzusammensetzung.,,,,,
+04.10.2026,KI Self-Tuning der Indikator-Gewichtungen,Automatisierte Anpassungsvorschläge der 6 Teil-Gewichtungen über OpenAI zur Optimierung der Trefferquote basierend auf Fehlentscheidungen.,,,,,
+04.10.2026,Autonomes Quant-Self-Tuning Module,"Vollständig lokales, algorithmisches Lernsystem zur Auswertung von Fehlsignalen und mathematischer Optimierung der Gewichtungen.",,,,,
+04.10.2026,Optimierte 5-Jahres-Indikator-Gewichtung,Erhöhung der Makro- und ETF-Gewichtung (je 20%) und Reduzierung von purem Momentum zur besseren Abbildung des institutionalisierten Marktverhaltens.,,,,,
+04.10.2026,Aktive Kopplung der Lern-Gewichtungen an Live-Signale,Die vom autonomen Lernmodul gelernten Indikator-Gewichtungen fließen direkt in die Berechnung der Live-Signale und des Dashboard-Charts ein.,,,,,
+04.10.2026,Integration ECHTER US Spot-ETF Netto-Zuflüsse,Direkte Einbindung tagesaktueller Spot-ETF Netto-Zuflüsse in Millionen USD über Coinglass/Farside anstelle von Volumen-Proxies.,,,,,
+04.10.2026,Vollständig lokaler Autonomie-Modus,Umstellung des Self-Tuning-Moduls auf eine reine Python-Datenanalyse in den lokalen CSV-Logs ohne externe API-Keys.,,,,,
+04.10.2026,Dynamischer ATR Volatilitäts- & Stop-Loss-Rechner,Berechnung der Average True Range (ATR) für jedes Asset zur automatischen Ausweisung präziser Stop-Loss- und Take-Profit-Marken.,,,,,
+,,,2026-10-17 15:43:49,KI-Optimierung & Schwellenwert-Anpassung angewendet,43.8%,7.0,9.0
