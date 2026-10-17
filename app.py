@@ -1247,7 +1247,29 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
                 st.markdown(local_learning_report)
         except Exception as e: st.warning(f"Fehler: {e}")
 
-# --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER (MIT BESTÄTIGUNG & SCHLIESSEN) ---
+# --- RADIKALE BEREINIGUNG DER IMPROVEMENTS CSV ---
+def force_clean_improvements_csv():
+    valid_cols = ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]
+    if os.path.exists(IMP_FILE):
+        try:
+            df = pd.read_csv(IMP_FILE)
+            mapping = {"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"}
+            df = df.rename(columns=mapping)
+            for c in valid_cols:
+                if c not in df.columns:
+                    df[c] = "-"
+            df = df[valid_cols]
+            df = df.dropna(subset=["Datum"])
+            df = df[~df["Datum"].astype(str).str.contains("None|none", case=False, na=False)]
+            df = df[df["Datum"].astype(str).str.strip() != ""]
+            df = df[df["Datum"].astype(str).str.strip() != "-"]
+            df.to_csv(IMP_FILE, index=False)
+            return df
+        except:
+            pass
+    return pd.DataFrame(columns=valid_cols)
+
+# --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER ---
 st.write("")
 with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
     st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
@@ -1260,10 +1282,9 @@ with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expande
     st.markdown("**KI-generierter Verbesserungsvorschlag:**")
     st.code(admin_prompt, language="markdown")
     
-    # Bestätigungs-Button mit Logik zum Protokollieren & Schließen
     if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
         now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        new_imp_row = pd.DataFrame([{
+        new_row = pd.DataFrame([{
             "Datum": now_str,
             "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
             "Trefferquote": f"{win_rate:.1f}%",
@@ -1271,24 +1292,10 @@ with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expande
             "Fehler": total_fails
         }])
         
-        if os.path.exists(IMP_FILE):
-            try:
-                df_imp = pd.read_csv(IMP_FILE)
-                # Alte uneinheitliche Spalten komplett bereinigen
-                if "Änderungsdatum" in df_imp.columns:
-                    df_imp = df_imp.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"})
-                
-                # Unsaubere / alte / None Zeilen entfernen
-                df_imp = df_imp.dropna(subset=["Datum"])
-                df_imp = df_imp[df_imp["Datum"].astype(str).str.lower() != "none"]
-                
-                df_imp = pd.concat([df_imp, new_imp_row], ignore_index=True)
-            except:
-                df_imp = new_imp_row
-        else:
-            df_imp = new_imp_row
-            
+        df_imp = force_clean_improvements_csv()
+        df_imp = pd.concat([df_imp, new_row], ignore_index=True)
         save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
+        
         st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
         st.rerun()
 
@@ -1299,32 +1306,11 @@ st.markdown("### 📜 Historie bestätigter Optimierungen & Aktualisierungen")
 if "update_confirmed_msg" in st.session_state:
     st.success(st.session_state["update_confirmed_msg"])
 
-if os.path.exists(IMP_FILE):
-    try:
-        df_history_log = pd.read_csv(IMP_FILE)
-        
-        # Umbenennung alter Spalten aus der CSV
-        if "Änderungsdatum" in df_history_log.columns:
-            df_history_log = df_history_log.rename(columns={"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"})
-
-        # Sicherstellen, dass Kernspalten existieren
-        for col in ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]:
-            if col not in df_history_log.columns:
-                df_history_log[col] = "-"
-
-        # Strenges Herauszufiltern von 'None', NaN oder leeren Werten in der Datumsspalte
-        df_history_log = df_history_log.dropna(subset=["Datum"])
-        df_history_log = df_history_log[df_history_log["Datum"].astype(str).str.lower() != "none"]
-        df_history_log = df_history_log[df_history_log["Datum"].astype(str).str.strip() != ""]
-
-        if not df_history_log.empty:
-            st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.info("Noch keine gültige Optimierungs-Historie vorhanden.")
-    except Exception as e:
-        st.info(f"Historie konnte nicht geladen werden. ({e})")
+df_history_log = force_clean_improvements_csv()
+if not df_history_log.empty:
+    st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
 else:
-    st.info("Keine bisherigen Historie-Einträge gefunden.")
+    st.info("Noch keine gültige Optimierungs-Historie vorhanden.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
