@@ -651,15 +651,24 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
     tvl = llama_data.get("global_tvl_b", 85.0)
     liq_score = 70 if tvl >= 90.0 else 30 if tvl >= 70.0 else -20
 
+    w_trend = weights.get('Trend & Momentum', 15.0)
+    w_etf = weights.get('ETF Net Flows', 15.0)
+    w_macro = weights.get('Makro (Zins/Aktien/Währung/VIX)', 15.0)
+    w_fg = weights.get('Fear & Greed Index', 15.0)
+    w_fund = weights.get('Funding Rates & Derivate', 15.0)
+    w_rsi = weights.get('RSI & Volatilität', 10.0)
+    w_news = weights.get('Nachrichten & Zins-Sentiment', 10.0)
+    w_liq = weights.get('Krypto-Liquidität & DeFi TVL', 5.0)
+
     return {
-        f"Trend & Momentum ({weights.get('Trend & Momentum', 15):.0f}%)": trend_score,
-        f"ETF Net Flows ({weights.get('ETF Net Flows', 15):.0f}%)": etf_score,
-        f"Makro & VIX ({weights.get('Makro (Zins/Aktien/Währung/VIX)', 15):.0f}%)": max(-100, min(100, macro_points)),
-        f"Fear & Greed ({weights.get('Fear & Greed Index', 15):.0f}%)": sentiment_score,
-        f"Funding & Derivate ({weights.get('Funding Rates & Derivate', 15):.0f}%)": funding_score,
-        f"RSI & Volatilität ({weights.get('RSI & Volatilität', 10):.0f}%)": rsi_score,
-        f"News & Zins ({weights.get('Nachrichten & Zins-Sentiment', 10):.0f}%)": max(-100, min(100, news_score)),
-        f"DeFi TVL & Liq. ({weights.get('Krypto-Liquidität & DeFi TVL', 5):.0f}%)": liq_score,
+        f"Trend & Momentum ({w_trend:.0f}%)": trend_score,
+        f"ETF Net Flows ({w_etf:.0f}%)": etf_score,
+        f"Makro & VIX ({w_macro:.0f}%)": max(-100, min(100, macro_points)),
+        f"Fear & Greed ({w_fg:.0f}%)": sentiment_score,
+        f"Funding & Derivate ({w_fund:.0f}%)": funding_score,
+        f"RSI & Volatilität ({w_rsi:.0f}%)": rsi_score,
+        f"News & Zins ({w_news:.0f}%)": max(-100, min(100, news_score)),
+        f"DeFi TVL & Liq. ({w_liq:.0f}%)": liq_score,
     }
 
 def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
