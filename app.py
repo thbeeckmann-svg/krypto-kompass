@@ -907,10 +907,11 @@ if current_data and len(current_data) > 0:
                         date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m." if zeitraum_wahl in ["7 Tage", "30 Tage"] else "%b %y")
                         y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
 
-                        # Achsenkonfiguration explizit mit tickCount für saubere Uhrzeiten-Anzeige
                         x_axis = alt.Axis(
                             format=date_format,
                             labelAngle=0,
+                            labels=True,
+                            labelFlush=False,
                             grid=True,
                             gridDash=[2, 2],
                             gridColor="rgba(150, 150, 150, 0.15)",
@@ -991,6 +992,33 @@ with st.container(border=True):
             st.caption("Aktuelle Schlagzeilen:")
             for h in top_headlines: st.markdown(f"- *{h}*")
 
+# --- KRYPTO-AKADEMIE & LERNPFAD (NEU INTEGRIERT) ---
+st.write("")
+with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
+    st.markdown("""
+    Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards für fundierte Entscheidungen nutzt.
+    
+    ---
+    
+    ### 🛡️ Modul 1: Risikomanagement & Stop-Loss (ATR)
+    * **Das Konzept:** Bevor du über Gewinne nachdenkst, musst du dein Kapital schützen. Der **Stop-Loss** ist eine automatische Notbremse.
+    * **Wie es in der App funktioniert:** Unter *Details, Analyse & Chart* siehst du den **ATR-Wert (Average True Range)**. Er misst die historische Schwankungsbreite. Die App berechnet daraus automatisch deinen Stop-Loss und Take-Profit, damit du Verluste im Ernstfall begrenzen kannst.
+    
+    ### 📉 Modul 2: Marktstimmung & Emotionen (Fear & Greed)
+    * **Das Konzept:** Märkte werden von Gier und Angst angetrieben. Warren Buffetts berühmte Regel lautet: *"Sei gierig, wenn andere panisch sind."*
+    * **Wie es in der App funktioniert:** Der **Fear & Greed Index** (ganz unten) zeigt dir den emotionalen Zustand des Marktes. 
+        * *Extreme Panik (Index < 25):* Oft historisch günstige Einstiegschancen.
+        * *Extreme Gier (Index > 75):* Höhere Gefahr von plötzlichen Kursrücksetzern / Gewinnmitnahmen.
+
+    ### 🌐 Modul 3: Makroökonomie & Institutionelle Flows
+    * **Das Konzept:** Kryptowährungen existieren nicht im Vakuum. Sie reagieren stark auf die globale Finanzwelt (Zinsen, US-Dollar, Aktien).
+    * **Wie es in der App funktioniert:** In den *Globalen Leitmärkten* siehst du US-Zinsen, den DXY (Dollar-Index) und vor allem die **Spot-ETF Nettoflüsse**. Wenn institutionelles Geld über ETFs einströmt, stützt das den Kurs massiv.
+
+    ### 📊 Modul 4: Technische Indikatoren (RSI & Signal-Score)
+    * **Das Konzept:** Mathematische Indikatoren helfen dabei, zu erkennen, ob ein Coin gerade "überkauft" oder "überverkauft" ist.
+    * **Wie es in der App funktioniert:** Der **RSI (Relative Strength Index)** zeigt Werte von 0 bis 100. Werte unter 30 signalisieren einen überverkauften Markt (Kaufchance), Werte über 70 deuten auf Überhitzung hin. Der finale **Signal-Score** bündelt alle diese Faktoren automatisch für dich.
+    """)
+
 # EXPANDER: AUTONOMES SELBSTLERN-SYSTEM
 st.write("")
 with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=False):
@@ -1070,7 +1098,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 if os.path.exists(LOG_FILE):
                     with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(MARKET_LOG_FILE):
-                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
+                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(IMP_FILE):
                     with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e: st.warning(f"Fehler: {e}")
