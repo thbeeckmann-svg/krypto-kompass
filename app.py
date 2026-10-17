@@ -892,14 +892,14 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 
     st.write("---")
     
-    # --- NEUES EIGENES AUFKLAPPBARES FENSTER FÜR QUANT-STATISTIK & HISTORIE ---
+    # --- EIGENES AUFKLAPPBARES FENSTER FÜR QUANT-STATISTIK & HISTORIE ---
     with st.expander("📊 **Quant Self-Tuning, Treffer-Statistik & Historie**", expanded=False):
         stats = evaluate_learning_data(df_archive_check, current_data)
         buy_signals = stats["buy_wins"] + stats["buy_fails"]
         sell_signals = stats["sell_wins"] + stats["sell_fails"]
         
-        buy_win_rate = (stats['buy_wins'] / buy_signals * 100) if buy_signal > 0 else 0
-        sell_win_rate = (stats['sell_wins'] / sell_signals * 100) if sell_signal > 0 else 0
+        buy_win_rate = (stats['buy_wins'] / buy_signals * 100) if buy_signals > 0 else 0
+        sell_win_rate = (stats['sell_wins'] / sell_signals * 100) if sell_signals > 0 else 0
 
         st.markdown("#### 📈 Leistungsübersicht & Trefferquoten")
         col_st1, col_st2, col_st3 = st.columns(3)
@@ -1190,7 +1190,7 @@ with st.container(border=True):
         oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
         copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
         vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
-        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#2ecc71"
         etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(f"""
