@@ -591,51 +591,23 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
     }
 
     if df_archive is None or df_archive.empty or not current_data:
-        return ("🧠 *Das Quant-Lernmodul analysiert historische Zyklen (wartet auf Einträge > 24h).* korrekt.", default_weights)
+        return default_weights
 
     stats = evaluate_learning_data(df_archive, current_data)
     buy_signals = stats["buy_wins"] + stats["buy_fails"]
     sell_signals = stats["sell_wins"] + stats["sell_fails"]
 
     weights = default_weights.copy()
-    optimizations = []
-
     if buy_signals > 0 and (stats["buy_fails"] / buy_signals) > 0.3:
         weights["Trend & Momentum"] -= 2.0
         weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
         weights["Nachrichten & Zins-Sentiment"] += 1.0
-        optimizations.append("⚠️ **Adaptive Anpassung Kauf-Signale:** Makro- und Zins-Einfluss dynamisch gestärkt.")
     if sell_signals > 0 and (stats["sell_fails"] / sell_signals) > 0.3:
         weights["Kraken Orderbuch-Druck"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
-        optimizations.append("⚠️ **Adaptive Anpassung Verkauf-Signale:** Kraken Orderbuch & RSI höher gewichtet.")
-    if not optimizations:
-        optimizations.append("✅ **Quant-System-Status Optimal:** Gewichtungen stabil.")
 
-    report = f"""
-#### 📊 Quant Self-Tuning & Treffer-Statistik
-* **Ausgewertete historische Signale:** {stats['total_checked']}
-* **Kauf-Trefferquote:** {stats['buy_wins']} Erfolge / {stats['buy_fails']} Fehlschläge
-* **Verkauf-Trefferquote:** {stats['sell_wins']} Erfolge / {stats['sell_fails']} Fehlschläge
-
-Basierend auf historischen Zyklen in `prediction_log.csv`:
-
-| Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
-| :--- | :---: | :---: |
-| **Trend & Momentum** | 15,0 % | **{format_ger(weights['Trend & Momentum'], 1)} %** |
-| **ETF Net Flows (Spot)** | 15,0 % | **{format_ger(weights['ETF Net Flows'], 1)} %** |
-| **Makro & VIX** | 15,0 % | **{format_ger(weights['Makro (Zins/Aktien/Währung/VIX)'], 1)} %** |
-| **Fear & Greed Index** | 15,0 % | **{format_ger(weights['Fear & Greed Index'], 1)} %** |
-| **Kraken Orderbuch-Druck** | 15,0 % | **{format_ger(weights['Kraken Orderbuch-Druck'], 1)} %** |
-| **RSI & Volatilität** | 10,0 % | **{format_ger(weights['RSI & Volatilität'], 1)} %** |
-| **Nachrichten & Zins-Sentiment** | 10,0 % | **{format_ger(weights['Nachrichten & Zins-Sentiment'], 1)} %** |
-| **DeFi TVL & Liq.** | 5,0 % | **{format_ger(weights['Krypto-Liquidität & DeFi TVL'], 1)} %** |
-
-##### 💡 System-Erkenntnisse:
-""" + "\n".join([f"- {opt}" for opt in optimizations])
-
-    return report, weights
+    return weights
 
 def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=0.0, rsi_val=None, weights=None):
     if weights is None:
@@ -891,7 +863,7 @@ llama_data = get_defillama_metrics()
 btc_dom = get_btc_dominance()
 
 df_market_check = pd.read_csv(MARKET_LOG_FILE) if os.path.exists(MARKET_LOG_FILE) else pd.DataFrame()
-local_learning_report, dynamic_weights = generate_local_self_learning_optimizations(df_archive_check, current_data)
+dynamic_weights = generate_local_self_learning_optimizations(df_archive_check, current_data)
 
 # KOPFBEREICH
 col_title, col_btn = st.columns([2, 1])
@@ -919,8 +891,58 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
     st.write("---")
-    # Hier wird das automatisierte Lernen und die Statistik direkt im UI angezeigt!
-    st.markdown(local_learning_report)
+    
+    # --- NEUES EIGENES AUFKLAPPBARES FENSTER FÜR QUANT-STATISTIK & HISTORIE ---
+    with st.expander("📊 **Quant Self-Tuning, Treffer-Statistik & Historie**", expanded=False):
+        stats = evaluate_learning_data(df_archive_check, current_data)
+        buy_signals = stats["buy_wins"] + stats["buy_fails"]
+        sell_signals = stats["sell_wins"] + stats["sell_fails"]
+        
+        buy_win_rate = (stats['buy_wins'] / buy_signals * 100) if buy_signal > 0 else 0
+        sell_win_rate = (stats['sell_wins'] / sell_signals * 100) if sell_signal > 0 else 0
+
+        st.markdown("#### 📈 Leistungsübersicht & Trefferquoten")
+        col_st1, col_st2, col_st3 = st.columns(3)
+        col_st1.metric("Ausgewertete Signale", f"{stats['total_checked']}")
+        col_st2.metric("Kauf-Treffer", f"{stats['buy_wins']} / {buy_signals}", f"{buy_win_rate:.1f}%")
+        col_st3.metric("Verkauf-Treffer", f"{stats['sell_wins']} / {sell_signals}", f"{sell_win_rate:.1f}%")
+
+        st.markdown("Basierend auf historischen Zyklen in `prediction_log.csv`:")
+
+        st.markdown("""
+        | Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
+        | :--- | :---: | :---: |
+        | **Trend & Momentum** | 15,0 % | **""" + f"{format_ger(dynamic_weights['Trend & Momentum'], 1)} %" + """** |
+        | **ETF Net Flows (Spot)** | 15,0 % | **""" + f"{format_ger(dynamic_weights['ETF Net Flows'], 1)} %" + """** |
+        | **Makro & VIX** | 15,0 % | **""" + f"{format_ger(dynamic_weights['Makro (Zins/Aktien/Währung/VIX)'], 1)} %" + """** |
+        | **Fear & Greed Index** | 15,0 % | **""" + f"{format_ger(dynamic_weights['Fear & Greed Index'], 1)} %" + """** |
+        | **Kraken Orderbuch-Druck** | 15,0 % | **""" + f"{format_ger(dynamic_weights['Kraken Orderbuch-Druck'], 1)} %" + """** |
+        | **RSI & Volatilität** | 10,0 % | **""" + f"{format_ger(dynamic_weights['RSI & Volatilität'], 1)} %" + """** |
+        | **Nachrichten & Zins-Sentiment** | 10,0 % | **""" + f"{format_ger(dynamic_weights['Nachrichten & Zins-Sentiment'], 1)} %" + """** |
+        | **DeFi TVL & Liq.** | 5,0 % | **""" + f"{format_ger(dynamic_weights['Krypto-Liquidität & DeFi TVL'], 1)} %" + """** |
+        """)
+
+        st.write("---")
+        st.markdown("#### 🗓️ Historienübersicht & Tägliche Auswertung")
+        if not df_archive_check.empty:
+            df_hist_view = df_archive_check.copy()
+            df_hist_view["Datum"] = pd.to_datetime(df_hist_view["Datum"], errors="coerce")
+            df_hist_view = df_hist_view.sort_values(by="Datum", ascending=False)
+            
+            # Tägliche Zusammenfassung aggregieren
+            df_hist_view["Tag"] = df_hist_view["Datum"].dt.strftime("%Y-%m-%d")
+            daily_summary = df_hist_view.groupby("Tag").agg(
+                Anzahl_Signale=("Coin", "count"),
+                Coins=("Coin", lambda x: ", ".join(x.unique()))
+            ).reset_index().sort_values(by="Tag", ascending=False)
+
+            st.markdown("##### 📅 Tägliche Signal-Zusammenfassung")
+            st.dataframe(daily_summary, use_container_width=True, hide_index=True)
+
+            st.markdown("##### 🔍 Detailliertes Signal-Logbuch (`prediction_log.csv`)")
+            st.dataframe(df_hist_view[["Datum", "Coin", "Kurs_Damals", "Signal", "FearGreed", "Target_Horizon"]], use_container_width=True, hide_index=True)
+        else:
+            st.info("Noch keine historischen Signale im Log vorhanden.")
 
     st.write("---")
     manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert Quant-Automatik)", value=False)
@@ -1168,7 +1190,7 @@ with st.container(border=True):
         oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
         copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
         vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
-        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#2ecc71"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
         etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(f"""
