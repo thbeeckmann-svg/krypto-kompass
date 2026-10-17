@@ -166,6 +166,42 @@ def clean_old_logs(file_path, days_limit=1095):
 clean_old_logs(LOG_FILE, 1095)
 clean_old_logs(MARKET_LOG_FILE, 1095)
 
+# --- RADIKALE BEREINIGUNG DER IMPROVEMENTS CSV ---
+def force_clean_improvements_csv():
+    target_cols = ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]
+    if os.path.exists(IMP_FILE):
+        try:
+            df = pd.read_csv(IMP_FILE)
+            clean_rows = []
+            
+            for _, row in df.iterrows():
+                # Hole den Wert entweder aus der neuen oder alten Spalte
+                d = str(row.get("Datum") if pd.notna(row.get("Datum")) else row.get("Änderungsdatum", "")).strip()
+                a = str(row.get("Aktion") if pd.notna(row.get("Aktion")) else row.get("Titel", "")).strip()
+                t = str(row.get("Trefferquote") if pd.notna(row.get("Trefferquote")) else row.get("Beschreibung", "")).strip()
+                e = str(row.get("Erfolgreich", "-")).strip()
+                f = str(row.get("Fehler", "-")).strip()
+                
+                # Nur übernehmen, wenn es ein echtes Datum gibt und nicht 'None' ist
+                if d and d.lower() not in ["nan", "none", "-", ""]:
+                    clean_rows.append({
+                        "Datum": d, 
+                        "Aktion": a.replace("nan", "-").replace("None", "-"), 
+                        "Trefferquote": t.replace("nan", "-").replace("None", "-"), 
+                        "Erfolgreich": e.replace("nan", "-"), 
+                        "Fehler": f.replace("nan", "-")
+                    })
+            
+            clean_df = pd.DataFrame(clean_rows, columns=target_cols)
+            # Entferne versehentliche exakte Duplikate
+            clean_df = clean_df.drop_duplicates(subset=["Datum", "Aktion"])
+            clean_df.to_csv(IMP_FILE, index=False)
+            return clean_df
+        except Exception as e:
+            st.error(f"Fehler bei der Tabellen-Bereinigung: {e}")
+            
+    return pd.DataFrame(columns=target_cols)
+
 # --- FREIE LIVE-DATEN ABRUFE (MULTI-SOURCE API) ---
 @st.cache_data(ttl=10)
 def get_current_data():
@@ -1247,64 +1283,47 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
                 st.markdown(local_learning_report)
         except Exception as e: st.warning(f"Fehler: {e}")
 
-# --- RADIKALE BEREINIGUNG DER IMPROVEMENTS CSV ---
-def force_clean_improvements_csv():
-    valid_cols = ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]
-    if os.path.exists(IMP_FILE):
-        try:
-            df = pd.read_csv(IMP_FILE)
-            mapping = {"Änderungsdatum": "Datum", "Titel": "Aktion", "Beschreibung": "Trefferquote"}
-            df = df.rename(columns=mapping)
-            for c in valid_cols:
-                if c not in df.columns:
-                    df[c] = "-"
-            df = df[valid_cols]
-            df = df.dropna(subset=["Datum"])
-            df = df[~df["Datum"].astype(str).str.contains("None|none", case=False, na=False)]
-            df = df[df["Datum"].astype(str).str.strip() != ""]
-            df = df[df["Datum"].astype(str).str.strip() != "-"]
-            df.to_csv(IMP_FILE, index=False)
-            return df
-        except:
-            pass
-    return pd.DataFrame(columns=valid_cols)
-
 # --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER ---
 st.write("")
 with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
-    st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
-    
-    col_a1, col_a2, col_a3 = st.columns(3)
-    col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
-    col_a2.metric("❌ Fehlsignale", total_fails)
-    col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
-    
-    st.markdown("**KI-generierter Verbesserungsvorschlag:**")
-    st.code(admin_prompt, language="markdown")
-    
-    if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
-        now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        new_row = pd.DataFrame([{
-            "Datum": now_str,
-            "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
-            "Trefferquote": f"{win_rate:.1f}%",
-            "Erfolgreich": total_wins,
-            "Fehler": total_fails
-        }])
+    # Wenn bereits geklickt wurde, zeige nur noch die Erfolgsmeldung im Fenster an
+    if "update_confirmed_msg" in st.session_state:
+        st.success(st.session_state["update_confirmed_msg"])
+        if st.button("Neue Auswertung starten 🔄", use_container_width=True):
+            del st.session_state["update_confirmed_msg"]
+            st.rerun()
+    else:
+        st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
         
-        df_imp = force_clean_improvements_csv()
-        df_imp = pd.concat([df_imp, new_row], ignore_index=True)
-        save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
+        col_a1, col_a2, col_a3 = st.columns(3)
+        col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
+        col_a2.metric("❌ Fehlsignale", total_fails)
+        col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
         
-        st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
-        st.rerun()
+        st.markdown("**KI-generierter Verbesserungsvorschlag:**")
+        st.code(admin_prompt, language="markdown")
+        
+        if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
+            now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            new_row = pd.DataFrame([{
+                "Datum": now_str,
+                "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
+                "Trefferquote": f"{win_rate:.1f}%",
+                "Erfolgreich": total_wins,
+                "Fehler": total_fails
+            }])
+            
+            df_imp = force_clean_improvements_csv()
+            df_imp = pd.concat([df_imp, new_row], ignore_index=True)
+            df_imp = df_imp.drop_duplicates(subset=["Datum", "Aktion"])
+            save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
+            
+            st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
+            st.rerun()
 
 # --- UNTERE ANZEIGE: HISTORIE DER BESTÄTIGTEN VERBESSERUNGEN ---
 st.write("---")
 st.markdown("### 📜 Historie bestätigter Optimierungen & Aktualisierungen")
-
-if "update_confirmed_msg" in st.session_state:
-    st.success(st.session_state["update_confirmed_msg"])
 
 df_history_log = force_clean_improvements_csv()
 if not df_history_log.empty:
