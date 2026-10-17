@@ -178,7 +178,7 @@ def clean_old_logs(file_path, days_limit=365):
 clean_old_logs(LOG_FILE, 365)
 clean_old_logs(MARKET_LOG_FILE, 365)
 
-# --- APIS ---
+# --- FREIE LIVE-DATEN ABRUFE (MULTI-SOURCE API) ---
 @st.cache_data(ttl=10)
 def get_current_data():
     coins = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
@@ -284,11 +284,7 @@ def get_vix_and_nasdaq():
 
 @st.cache_data(ttl=120)
 def translate_to_german(text):
-    """Einfache, robuste Übersetzung gängiger Krypto-News-Begriffe ins Deutsche"""
-    if not text:
-        return text
-    
-    # Häufige Phrasen ersetzen
+    if not text: return text
     t = text
     replacements = {
         "says": "sagt,", "reports": "berichtet,", "Report:": "Bericht:",
@@ -307,7 +303,6 @@ def translate_to_german(text):
         "as total value locked reaches key resistance": "während der Gesamtwert (TVL) wichtige Widerstände erreicht",
         "Surge": "Anstieg", "Rally": "Rallye", "Gain": "Gewinn", "Drop": "Rückgang", "Fall": "Fall", "Crash": "Crash"
     }
-    
     for eng, ger in replacements.items():
         t = t.replace(eng, ger)
     return t
@@ -356,9 +351,7 @@ def get_news_sentiment_score():
             if any(w in t_low for w in ["bear", "drop", "fall", "down", "low", "crash", "ban", "inflation", "loss", "risk"]):
                 sentiment_points -= 18
 
-    # Schlagzeilen direkt ins Deutsche übersetzen
     translated_headlines = [translate_to_german(h) for h in headlines[:5]]
-
     return max(-100, min(100, sentiment_points)), translated_headlines
 
 @st.cache_data(ttl=600)
@@ -482,8 +475,7 @@ def calculate_atr(symbol, current_price=0.0, limit=30):
             val = float(df["tr"].rolling(window=14).mean().iloc[-1])
             if val > 0: return val
     except: pass
-    if current_price > 0:
-        return current_price * 0.03
+    if current_price > 0: return current_price * 0.03
     return 0.0
 
 @st.cache_data(ttl=30)
@@ -912,6 +904,20 @@ if current_data and len(current_data) > 0:
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
                     
                     st.write("---")
+                    st.markdown("##### 🧮 Interaktiver Positionsgrößen- & Risiko-Rechner")
+                    col_rk1, col_rk2 = st.columns(2)
+                    total_depot_capital = col_rk1.number_input(f"Gesamtkapital ({coin}):", min_value=100.0, value=5000.0, step=100.0, key=f"cap_{coin}")
+                    max_risk_pct = col_rk2.slider(f"Max. Risiko (%):", 0.5, 5.0, 1.0, 0.5, key=f"risk_{coin}")
+                    
+                    risk_amount_eur = total_depot_capital * (max_risk_pct / 100.0)
+                    risk_per_coin = max(0.0001, price - stop_loss)
+                    position_size_coins = risk_amount_eur / risk_per_coin
+                    position_size_eur = position_size_coins * price
+
+                    st.markdown(f"• 💰 **Empfohlenes Investitionsvolumen:** **{format_ger(position_size_eur, 2)} €** (~{format_ger(position_size_coins, 4)} {symbol})")
+                    st.markdown(f"• 🛡️ **Absolutes Risiko bei Stop-Loss:** **{format_ger(risk_amount_eur, 2)} €** ({max_risk_pct}% des Gesamtkapitals)")
+
+                    st.write("---")
                     st.markdown("##### 📊 Live-Marktindikatoren & Wal-Tracker")
                     st.caption(f"🏛 **Spot-ETF Net Flow:** **{format_ger(real_etf_flow, 1, True)}M $**\n\n📊 **RSI (14):** **{format_ger(rsi_value, 1)}** | ⚡ **Funding Rate:** **{format_ger(funding_rate_val*100, 3, True)}%**\n\n📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 🔒 **DeFi TVL:** **{format_ger(llama_data.get('global_tvl_b', 0), 1)} Mrd. $**\n\n🐋 **Wal-Aktivität:** {whale_msg}")
 
@@ -1076,12 +1082,18 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 correct_hits, total_evaluated = 0, 0
                 sim_depot_signal, sim_depot_hold = 100.0, 100.0
 
+                monthly_stats = {}
+
                 for index, row in df_filtered_view.iterrows():
                     c_name, kurs_damals, signal_damals, horizon = row["Coin"], float(row.get("Kurs_Damals", 0)), str(row.get("Signal", "")).upper(), str(row.get("Target_Horizon", "7 Tage"))
                     parsed_dt = row["ParsedDate"]
                     datum_formatted = parsed_dt.strftime("%d.%m.%Y %H:%M") if pd.notnull(parsed_dt) else str(row["Datum"])
                     kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
                     diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
+
+                    month_key = parsed_dt.strftime("%Y-%m") if pd.notnull(parsed_dt) else "Unbekannt"
+                    if month_key not in monthly_stats:
+                        monthly_stats[month_key] = {"trades": 0, "wins": 0, "total_diff": 0.0}
 
                     is_today = False
                     if pd.notnull(parsed_dt):
@@ -1102,16 +1114,42 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                         evaluation = "Neutral 🟡"
                         if "KAUF" in signal_damals:
                             total_evaluated += 1
-                            if diff_pct > -1.5: correct_hits += 1; evaluation = "Treffer 🟢"
+                            monthly_stats[month_key]["trades"] += 1
+                            if diff_pct > -1.5:
+                                correct_hits += 1
+                                monthly_stats[month_key]["wins"] += 1
+                                evaluation = "Treffer 🟢"
                             else: evaluation = "Fehlsignal 🔴"
                         elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
                             total_evaluated += 1
-                            if diff_pct < 1.5: correct_hits += 1; evaluation = "Schutz 🟢"
+                            monthly_stats[month_key]["trades"] += 1
+                            if diff_pct < 1.5:
+                                correct_hits += 1
+                                monthly_stats[month_key]["wins"] += 1
+                                evaluation = "Schutz 🟢"
                             else: evaluation = "Seitwärts 🟡"
+                    
+                    monthly_stats[month_key]["total_diff"] += diff_pct
 
                     comparison_rows.append({"Datum": datum_formatted, "Coin": c_name, "Horizon": horizon, "Signal": signal_damals, "Kurs Damals": f"{format_ger(kurs_damals, 2 if kurs_damals >= 1 else 4)} €", "Aktuell": f"{format_ger(kurs_aktuell, 2 if kurs_aktuell >= 1 else 4)} €", "Diff (%)": format_ger(diff_pct, 2, True) + " %", "Auswertung": evaluation})
 
                 st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+
+                st.write("---")
+                st.markdown("##### 📅 Monatlicher Performance- & Gewinn-Report")
+                monthly_rows = []
+                for m_key, m_val in sorted(monthly_stats.items(), reverse=True):
+                    t_count = m_val["trades"]
+                    w_count = m_val["wins"]
+                    win_rate = (w_count / t_count * 100) if t_count > 0 else 0.0
+                    monthly_rows.append({
+                        "Monat": m_key,
+                        "Ausgewertete Signale": t_count,
+                        "Erfolgreich": w_count,
+                        "Trefferquote": f"{format_ger(win_rate, 1)} %",
+                        "Ø Kurs-Performance": f"{format_ger(m_val['total_diff'] / max(1, t_count), 2, True)} %"
+                    })
+                st.dataframe(pd.DataFrame(monthly_rows), use_container_width=True, hide_index=True)
 
                 st.write("---")
                 st.markdown("##### 📈 Backtest-Vergleich")
