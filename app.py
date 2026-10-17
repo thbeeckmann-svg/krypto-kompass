@@ -293,6 +293,7 @@ def translate_to_german(text):
         "to discontinue services for some users": "stellt Dienste für einige Nutzer ein",
         "in one-off exercise": "im Rahmen einer einmaligen Maßnahme",
         "Here's what happened in crypto today": "Das ist heute im Krypto-Markt passiert",
+        "Solana shows resilience, but some areas need continued observation": "Solana zeigt Widerstandskraft, aber einige Bereiche erfordern fortgesetzte Beobachtung",
         "escalate spending against": "verstärkt Ausgaben gegen",
         "Senate race": "Senatsrennen", "market update": "Markt-Update",
         "show steady institutional inflows": "zeigen stabile institutionelle Zuflüsse",
@@ -510,7 +511,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except: pass
     return 0.0001
 
-# --- VERBESSERTE QUANT- & Z-SCORE PROGNOSE-LOGIK ---
+# --- QUANT- & Z-SCORE PROGNOSE-LOGIK ---
 def evaluate_learning_data(df_archive, current_data):
     stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0}
     if df_archive is None or df_archive.empty or not current_data: return stats
