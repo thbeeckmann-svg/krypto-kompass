@@ -1286,42 +1286,48 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
 # --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER ---
 st.write("")
 
-# Wenn bereits bestätigt wurde, blenden wir den Expander KOMPLETT aus und zeigen nur die Erfolgsmeldung
+# Ein leerer Container, der komplett überschrieben werden kann
+admin_ui_container = st.empty()
+
+# Prüfen, ob bereits bestätigt wurde
 if "update_confirmed_msg" in st.session_state:
-    st.success(st.session_state["update_confirmed_msg"])
-    if st.button("Neue Auswertung starten 🔄", use_container_width=True):
-        del st.session_state["update_confirmed_msg"]
-        st.rerun()
-else:
-    # Solange nicht bestätigt wurde, zeige das aufklappbare Fenster
-    with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
-        st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
-        
-        col_a1, col_a2, col_a3 = st.columns(3)
-        col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
-        col_a2.metric("❌ Fehlsignale", total_fails)
-        col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
-        
-        st.markdown("**KI-generierter Verbesserungsvorschlag:**")
-        st.code(admin_prompt, language="markdown")
-        
-        if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
-            now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
-            new_row = pd.DataFrame([{
-                "Datum": now_str,
-                "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
-                "Trefferquote": f"{win_rate:.1f}%",
-                "Erfolgreich": total_wins,
-                "Fehler": total_fails
-            }])
-            
-            df_imp = force_clean_improvements_csv()
-            df_imp = pd.concat([df_imp, new_row], ignore_index=True)
-            df_imp = df_imp.drop_duplicates(subset=["Datum", "Aktion"])
-            save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
-            
-            st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
+    # Wenn ja: Zeige NUR die Erfolgsmeldung im Container an (das Fenster ist weg)
+    with admin_ui_container.container():
+        st.success(st.session_state["update_confirmed_msg"])
+        if st.button("Neue Auswertung starten 🔄", use_container_width=True):
+            del st.session_state["update_confirmed_msg"]
             st.rerun()
+else:
+    # Wenn nein: Zeige das aufklappbare Fenster im Container an
+    with admin_ui_container.container():
+        with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
+            st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
+            
+            col_a1, col_a2, col_a3 = st.columns(3)
+            col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
+            col_a2.metric("❌ Fehlsignale", total_fails)
+            col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
+            
+            st.markdown("**KI-generierter Verbesserungsvorschlag:**")
+            st.code(admin_prompt, language="markdown")
+            
+            if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
+                now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                new_row = pd.DataFrame([{
+                    "Datum": now_str,
+                    "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
+                    "Trefferquote": f"{win_rate:.1f}%",
+                    "Erfolgreich": total_wins,
+                    "Fehler": total_fails
+                }])
+                
+                df_imp = force_clean_improvements_csv()
+                df_imp = pd.concat([df_imp, new_row], ignore_index=True)
+                df_imp = df_imp.drop_duplicates(subset=["Datum", "Aktion"])
+                save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
+                
+                st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
+                st.rerun()
 
 # --- UNTERE ANZEIGE: HISTORIE DER BESTÄTIGTEN VERBESSERUNGEN ---
 st.write("---")
