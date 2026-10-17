@@ -1285,14 +1285,16 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
 
 # --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER ---
 st.write("")
-with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
-    # Wenn bereits geklickt wurde, zeige nur noch die Erfolgsmeldung im Fenster an
-    if "update_confirmed_msg" in st.session_state:
-        st.success(st.session_state["update_confirmed_msg"])
-        if st.button("Neue Auswertung starten 🔄", use_container_width=True):
-            del st.session_state["update_confirmed_msg"]
-            st.rerun()
-    else:
+
+# Wenn bereits bestätigt wurde, blenden wir den Expander KOMPLETT aus und zeigen nur die Erfolgsmeldung
+if "update_confirmed_msg" in st.session_state:
+    st.success(st.session_state["update_confirmed_msg"])
+    if st.button("Neue Auswertung starten 🔄", use_container_width=True):
+        del st.session_state["update_confirmed_msg"]
+        st.rerun()
+else:
+    # Solange nicht bestätigt wurde, zeige das aufklappbare Fenster
+    with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
         st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
         
         col_a1, col_a2, col_a3 = st.columns(3)
