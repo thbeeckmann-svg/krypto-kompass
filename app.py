@@ -32,7 +32,6 @@ CRYPTO_LOGOS = {
 }
 
 LOG_FILE = "prediction_log.csv"
-IMP_FILE = "improvements_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
 
 # --- DEUTSCHE ZAHLENFORMATIERUNG ---
@@ -165,42 +164,6 @@ def clean_old_logs(file_path, days_limit=1095):
 
 clean_old_logs(LOG_FILE, 1095)
 clean_old_logs(MARKET_LOG_FILE, 1095)
-
-# --- RADIKALE BEREINIGUNG DER IMPROVEMENTS CSV ---
-def force_clean_improvements_csv():
-    target_cols = ["Datum", "Aktion", "Trefferquote", "Erfolgreich", "Fehler"]
-    if os.path.exists(IMP_FILE):
-        try:
-            df = pd.read_csv(IMP_FILE)
-            clean_rows = []
-            
-            for _, row in df.iterrows():
-                # Hole den Wert entweder aus der neuen oder alten Spalte
-                d = str(row.get("Datum") if pd.notna(row.get("Datum")) else row.get("Änderungsdatum", "")).strip()
-                a = str(row.get("Aktion") if pd.notna(row.get("Aktion")) else row.get("Titel", "")).strip()
-                t = str(row.get("Trefferquote") if pd.notna(row.get("Trefferquote")) else row.get("Beschreibung", "")).strip()
-                e = str(row.get("Erfolgreich", "-")).strip()
-                f = str(row.get("Fehler", "-")).strip()
-                
-                # Nur übernehmen, wenn es ein echtes Datum gibt und nicht 'None' ist
-                if d and d.lower() not in ["nan", "none", "-", ""]:
-                    clean_rows.append({
-                        "Datum": d, 
-                        "Aktion": a.replace("nan", "-").replace("None", "-"), 
-                        "Trefferquote": t.replace("nan", "-").replace("None", "-"), 
-                        "Erfolgreich": e.replace("nan", "-"), 
-                        "Fehler": f.replace("nan", "-")
-                    })
-            
-            clean_df = pd.DataFrame(clean_rows, columns=target_cols)
-            # Entferne versehentliche exakte Duplikate
-            clean_df = clean_df.drop_duplicates(subset=["Datum", "Aktion"])
-            clean_df.to_csv(IMP_FILE, index=False)
-            return clean_df
-        except Exception as e:
-            st.error(f"Fehler bei der Tabellen-Bereinigung: {e}")
-            
-    return pd.DataFrame(columns=target_cols)
 
 # --- FREIE LIVE-DATEN ABRUFE (MULTI-SOURCE API) ---
 @st.cache_data(ttl=10)
@@ -547,7 +510,7 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     except: pass
     return 0.0001
 
-# --- AUTONOMES SELBSTLERN-SYSTEM & ADMIN-MODUL ---
+# --- SELBSTLERN-LOGIK (INTERN) ---
 def evaluate_learning_data(df_archive, current_data):
     stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0}
     if df_archive is None or df_archive.empty or not current_data: return stats
@@ -570,32 +533,6 @@ def evaluate_learning_data(df_archive, current_data):
                 if diff_pct <= 1.5: stats["sell_wins"] += 1
                 else: stats["sell_fails"] += 1
     return stats
-
-def generate_admin_prompt(stats):
-    total_wins = stats["buy_wins"] + stats["sell_wins"]
-    total_fails = stats["buy_fails"] + stats["sell_fails"]
-    total_signals = total_wins + total_fails
-    win_rate = (total_wins / total_signals * 100) if total_signals > 0 else 0.0
-
-    prompt = f"""[SYSTEM-ANALYSE & PROMPT ZUR CODE-OPTIMIERUNG]
-Gesamte evaluierte Signale: {total_signals}
-Erfolge (Korrekt): {total_wins}
-Misserfolge (Falsch): {total_fails}
-Aktuelle KI-Trefferquote: {win_rate:.1f}%
-
--> BITTE KOPIERE DEN FOLGENDEN TEXT UND GIB IHN AN EINE KI (Z.B. GEMINI/CHATGPT) WEITER, UM DEN CODE ZU VERBESSERN:
-
-"Hallo KI, analysiere die Performance meiner Krypto-App-Logik. Aktuell haben wir {total_wins} erfolgreiche und {total_fails} fehlerhafte Prognosen (Trefferquote: {win_rate:.1f}%). 
-Spezifischer Breakdown: Kauf-Erfolge: {stats['buy_wins']}, Kauf-Fehlschläge: {stats['buy_fails']} | Verkauf-Erfolge: {stats['sell_wins']}, Verkauf-Fehlschläge: {stats['sell_fails']}.
-
-Bitte schreibe die Funktion `generate_signal()` und `calculate_detailed_factor_scores()` in meiner `app.py` um. 
-Führe folgende komplexe Refaktorierungen durch:
-1. Passe die Multiplikatoren (Weights) für den Makro-Faktor und den RSI an die Fehlerverteilung an (bei vielen Kauf-Fehlschlägen RSI-Anforderungen strenger machen; bei Verkaufs-Fehlschlägen Funding-Rate höher gewichten).
-2. Justiere die Schwellenwerte (`t_sf`, `t_mf`, etc.) asymmetrisch: Erhöhe die Toleranz für Drawdowns in Aufwärtsmärkten basierend auf der 3-Jahres-Vola.
-3. Implementiere eine automatische Liquidations-Schutzlogik im Code, falls VIX über 25 steigt und gleichzeitig ETF-Abflüsse stattfinden.
-Gib mir den modifizierten Python-Code für diese Funktionen zurück."
-"""
-    return total_wins, total_fails, win_rate, prompt
 
 def generate_local_self_learning_optimizations(df_archive, current_data):
     default_weights = {
@@ -871,9 +808,6 @@ def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, euro
 # --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
 df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
-
-learning_stats = evaluate_learning_data(df_archive_check, current_data)
-total_wins, total_fails, win_rate, admin_prompt = generate_admin_prompt(learning_stats)
 
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
@@ -1282,62 +1216,6 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
                 st.write("---")
                 st.markdown(local_learning_report)
         except Exception as e: st.warning(f"Fehler: {e}")
-
-# --- ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER ---
-st.write("")
-
-# Ein leerer Container, der komplett überschrieben werden kann
-admin_ui_container = st.empty()
-
-# Prüfen, ob bereits bestätigt wurde
-if "update_confirmed_msg" in st.session_state:
-    # Wenn ja: Zeige NUR die Erfolgsmeldung im Container an (das Fenster ist weg)
-    with admin_ui_container.container():
-        st.success(st.session_state["update_confirmed_msg"])
-        if st.button("Neue Auswertung starten 🔄", use_container_width=True):
-            del st.session_state["update_confirmed_msg"]
-            st.rerun()
-else:
-    # Wenn nein: Zeige das aufklappbare Fenster im Container an
-    with admin_ui_container.container():
-        with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
-            st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
-            
-            col_a1, col_a2, col_a3 = st.columns(3)
-            col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
-            col_a2.metric("❌ Fehlsignale", total_fails)
-            col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
-            
-            st.markdown("**KI-generierter Verbesserungsvorschlag:**")
-            st.code(admin_prompt, language="markdown")
-            
-            if st.button("✅ Bestätigen & Aktualisieren anwenden", use_container_width=True):
-                now_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
-                new_row = pd.DataFrame([{
-                    "Datum": now_str,
-                    "Aktion": "KI-Optimierung & Schwellenwert-Anpassung angewendet",
-                    "Trefferquote": f"{win_rate:.1f}%",
-                    "Erfolgreich": total_wins,
-                    "Fehler": total_fails
-                }])
-                
-                df_imp = force_clean_improvements_csv()
-                df_imp = pd.concat([df_imp, new_row], ignore_index=True)
-                df_imp = df_imp.drop_duplicates(subset=["Datum", "Aktion"])
-                save_and_commit_csv(IMP_FILE, df_imp, force_commit=True)
-                
-                st.session_state["update_confirmed_msg"] = f"🚀 Aktualisierung am {now_str} erfolgreich bestätigt und angewendet!"
-                st.rerun()
-
-# --- UNTERE ANZEIGE: HISTORIE DER BESTÄTIGTEN VERBESSERUNGEN ---
-st.write("---")
-st.markdown("### 📜 Historie bestätigter Optimierungen & Aktualisierungen")
-
-df_history_log = force_clean_improvements_csv()
-if not df_history_log.empty:
-    st.dataframe(df_history_log.sort_values(by="Datum", ascending=False), use_container_width=True, hide_index=True)
-else:
-    st.info("Noch keine gültige Optimierungs-Historie vorhanden.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
