@@ -907,8 +907,18 @@ if current_data and len(current_data) > 0:
                         date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m." if zeitraum_wahl in ["7 Tage", "30 Tage"] else "%b %y")
                         y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
 
+                        # Achsenkonfiguration explizit mit tickCount für saubere Uhrzeiten-Anzeige
+                        x_axis = alt.Axis(
+                            format=date_format,
+                            labelAngle=0,
+                            grid=True,
+                            gridDash=[2, 2],
+                            gridColor="rgba(150, 150, 150, 0.15)",
+                            tickCount=6 if zeitraum_wahl == "24 Stunden" else 5
+                        )
+
                         base = alt.Chart(df_chart).encode(
-                            x=alt.X("Timestamp:T", title=None, axis=alt.Axis(format=date_format, labelAngle=0, grid=True, gridDash=[2, 2], gridColor="rgba(150, 150, 150, 0.15)", tickCount=6)),
+                            x=alt.X("Timestamp:T", title=None, axis=x_axis),
                             y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)"))
                         )
                         chart_layers = base.mark_area(opacity=0.15, color=chart_color, interpolate="monotone") + base.mark_line(color=chart_color, strokeWidth=2.2, interpolate="monotone")
