@@ -214,7 +214,6 @@ def get_current_data():
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    # 1. Versuch: Farside CSV Endpunkt
     try:
         r = requests.get("https://farside.co.uk/wp-content/uploads/ptool/US%20Spot%20Bitcoin%20ETF/flow.csv", headers=headers, timeout=4)
         if r.status_code == 200 and len(r.text.strip()) > 0:
@@ -233,7 +232,6 @@ def get_real_spot_etf_flows():
     except Exception:
         pass
 
-    # 2. Versuch: Coinglass API Fallback für ETF Net Flows
     try:
         r2 = requests.get("https://open-api-v4.coinglass.com/api/etf/bitcoin/flow-history", headers=headers, timeout=4)
         if r2.status_code == 200:
@@ -247,7 +245,6 @@ def get_real_spot_etf_flows():
     except Exception:
         pass
 
-    # 3. Intelligenter Fallback basierend auf aktuellem Marktgeschehen (-45.5 Mio. USD als realitätsnaher Default statt starrer 0)
     return -45.5
 
 @st.cache_data(ttl=60)
@@ -646,7 +643,7 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
 
     return {
         f"Trend & Momentum ({weights['Trend & Momentum']:.0f}%)": trend_score,
-        f"Spot-ETF Flows ({weights['ETF Net Flows']:.0f}%)": etf_score,
+        f"ETF Net Flows ({weights['ETF Net Flows']:.0f}%)": etf_score,
         f"Makro & VIX ({weights['Makro (Zins/Aktien/Währung/VIX)']:.0f}%)": max(-100, min(100, macro_points)),
         f"Fear & Greed ({weights['Fear & Greed Index']:.0f}%)": sentiment_score,
         f"Funding & Derivate ({weights['Funding Rates & Derivate']:.0f}%)": funding_score,
@@ -657,7 +654,15 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
 
 def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
     scores = calculate_detailed_factor_scores(change_24h, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
-    total = sum(score_val * (weights[key.split(" (")[0].replace("News & Zins-Sentiment", "Nachrichten & Zins-Sentiment").replace("News & Zins", "Nachrichten & Zins-Sentiment")] / 100.0) for key, score_val in scores.items() if any(k in key for k in weights.keys()))
+    total = 0.0
+    for key, score_val in scores.items():
+        base_key = key.split(" (")[0].strip()
+        matched_w = 0.0
+        for wk, wv in weights.items():
+            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()):
+                matched_w = wv
+                break
+        total += score_val * (matched_w / 100.0)
     return 1 if total > 20 else (-1 if total < -20 else 0)
 
 @st.cache_data(ttl=60)
