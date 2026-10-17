@@ -613,30 +613,61 @@ Basierend auf bis zu **3 Jahren (1.095 Tagen)** historischen Zyklen in `predicti
 
 def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
     if weights is None:
-        weights = {"Trend & Momentum": 15.0, "ETF Net Flows": 15.0, "Makro (Zins/Aktien/Währung/VIX)": 15.0, "Fear & Greed Index": 15.0, "Funding Rates & Derivate": 15.0, "RSI & Volatilität": 10.0, "Nachrichten & Zins-Sentiment": 10.0, "Krypto-Liquidität & DeFi TVL": 5.0}
+        weights = {
+            "Trend & Momentum": 15.0, 
+            "ETF Net Flows": 15.0, 
+            "Makro (Zins/Aktien/Währung/VIX)": 15.0, 
+            "Fear & Greed Index": 15.0, 
+            "Funding Rates & Derivate": 15.0, 
+            "RSI & Volatilität": 10.0, 
+            "Nachrichten & Zins-Sentiment": 10.0, 
+            "Krypto-Liquidität & DeFi TVL": 5.0
+        }
 
     trend_score = 80 if perf_val <= -7.5 else 40 if perf_val <= -3.0 else -80 if perf_val >= 7.5 else -40 if perf_val >= 3.5 else 0
     sentiment_score = 90 if fg_value <= 25 else -90 if fg_value >= 75 else (50 - fg_value) * 1.5
     etf_score = 90 if etf_net_flow >= 200.0 else 50 if etf_net_flow >= 50.0 else -90 if etf_net_flow <= -200.0 else -50 if etf_net_flow <= -50.0 else 0
     
     if funding_rate is not None:
-        funding_score = -90 if funding_rate >= 0.0005 else -50 if funding_rate >= 0.0002 else 90 if funding_rate <= -0.0003 else 50 if funding_rate <= -0.0001 else 10
+        funding_score = -100 if funding_rate >= 0.0004 else (-60 if funding_rate >= 0.0002 else (100 if funding_rate <= -0.0003 else (60 if funding_rate <= -0.0001 else 10)))
     else:
         funding_score = -50 if perf_val > 5.0 else (50 if perf_val < -5.0 else 10)
 
-    rsi_score = max(-100.0, min(100.0, (50.0 - rsi_val) * 2.5)) if rsi_val is not None else (70 if perf_val < -6.0 else (-70 if perf_val > 6.0 else 0))
+    if rsi_val is not None:
+        if rsi_val <= 28:
+            rsi_score = 100.0
+        elif rsi_val <= 35:
+            rsi_score = 60.0
+        elif rsi_val >= 72:
+            rsi_score = -100.0
+        else:
+            rsi_score = max(-100.0, min(100.0, (50.0 - rsi_val) * 2.8))
+    else:
+        rsi_score = 70 if perf_val < -6.0 else (-70 if perf_val > 6.0 else 0)
 
     macro_points = 30 if bond_change < -0.05 else (-30 if bond_change > 0.05 else 0)
     if stock_indices:
-        if stock_indices.get("SP500", {}).get("chg", 0.0) > 0.5 or stock_indices.get("DAX", {}).get("chg", 0.0) > 0.5: macro_points += 15
-        elif stock_indices.get("SP500", {}).get("chg", 0.0) < -0.5 or stock_indices.get("DAX", {}).get("chg", 0.0) < -0.5: macro_points -= 15
+        if stock_indices.get("SP500", {}).get("chg", 0.0) > 0.5 or stock_indices.get("DAX", {}).get("chg", 0.0) > 0.5: 
+            macro_points += 15
+        elif stock_indices.get("SP500", {}).get("chg", 0.0) < -0.5 or stock_indices.get("DAX", {}).get("chg", 0.0) < -0.5: 
+            macro_points -= 15
 
     vix_val = vix_data.get("vix_val", 18.0)
     nasdaq_chg = vix_data.get("nasdaq_chg", 0.0)
-    if vix_val > 28.0: macro_points -= 30
-    elif vix_val < 15.0: macro_points += 20
-    if nasdaq_chg > 1.0: macro_points += 20
-    elif nasdaq_chg < -1.0: macro_points -= 20
+    
+    if vix_val > 25.0 and etf_net_flow < 0.0:
+        macro_points -= 70
+        etf_score -= 50
+
+    if vix_val > 28.0: 
+        macro_points -= 30
+    elif vix_val < 15.0: 
+        macro_points += 20
+        
+    if nasdaq_chg > 1.0: 
+        macro_points += 20
+    elif nasdaq_chg < -1.0: 
+        macro_points -= 20
 
     tvl = llama_data.get("global_tvl_b", 85.0)
     liq_score = 70 if tvl >= 90.0 else 30 if tvl >= 70.0 else -20
@@ -764,21 +795,42 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
 
 def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, zeitraum, weights, rsi_val=None, funding_rate=None):
     macro_score = get_automatic_macro_score(volume, fg_value, bond_change, perf_val, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
-    if zeitraum == "24 Stunden": t_sf, t_mf, t_ms, t_ss = -7.5, -3.0, 3.5, 7.5
-    elif zeitraum == "7 Tage": t_sf, t_mf, t_ms, t_ss = -13.0, -4.5, 5.5, 13.0
-    elif zeitraum == "30 Tage": t_sf, t_mf, t_ms, t_ss = -22.0, -8.0, 9.0, 22.0
-    elif zeitraum == "90 Tage": t_sf, t_mf, t_ms, t_ss = -32.0, -11.0, 13.0, 32.0
-    elif zeitraum == "6 Monate": t_sf, t_mf, t_ms, t_ss = -45.0, -15.0, 18.0, 45.0
-    elif zeitraum == "1 Jahr": t_sf, t_mf, t_ms, t_ss = -60.0, -20.0, 25.0, 60.0
-    elif zeitraum == "2 Jahre": t_sf, t_mf, t_ms, t_ss = -80.0, -30.0, 40.0, 90.0
-    elif zeitraum == "3 Jahre": t_sf, t_mf, t_ms, t_ss = -100.0, -40.0, 60.0, 150.0
-    else: t_sf, t_mf, t_ms, t_ss = -120.0, -50.0, 80.0, 250.0  # 5 Jahre
+    
+    vix_val = vix_data.get("vix_val", 18.0)
+    volatility_buffer_factor = 1.25 if (vix_val < 22.0 and macro_score >= 0) else 1.0
 
-    if perf_val <= t_sf and macro_score >= 0: return ("STARKE KAUFCHANCE 🟢🟢", f"Deutlicher Kursrücksetzer ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
-    elif perf_val <= t_mf: return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
-    elif perf_val >= t_ss and (fg_value >= 75 or macro_score < 0): return ("GEWINNE SICHERN 🔴🔴", f"Starker Preissprung ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
-    elif perf_val >= t_ms: return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
-    else: return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
+    if zeitraum == "24 Stunden": 
+        t_sf, t_mf, t_ms, t_ss = -7.5 * volatility_buffer_factor, -3.0, 3.5, 7.5
+    elif zeitraum == "7 Tage": 
+        t_sf, t_mf, t_ms, t_ss = -14.5 * volatility_buffer_factor, -5.5, 5.5, 13.0
+    elif zeitraum == "30 Tage": 
+        t_sf, t_mf, t_ms, t_ss = -25.0 * volatility_buffer_factor, -9.5, 9.0, 22.0
+    elif zeitraum == "90 Tage": 
+        t_sf, t_mf, t_ms, t_ss = -36.0 * volatility_buffer_factor, -13.0, 13.0, 32.0
+    elif zeitraum == "6 Monate": 
+        t_sf, t_mf, t_ms, t_ss = -50.0 * volatility_buffer_factor, -18.0, 18.0, 45.0
+    elif zeitraum == "1 Jahr": 
+        t_sf, t_mf, t_ms, t_ss = -65.0 * volatility_buffer_factor, -24.0, 25.0, 60.0
+    elif zeitraum == "2 Jahre": 
+        t_sf, t_mf, t_ms, t_ss = -85.0 * volatility_buffer_factor, -35.0, 40.0, 90.0
+    elif zeitraum == "3 Jahre": 
+        t_sf, t_mf, t_ms, t_ss = -105.0 * volatility_buffer_factor, -45.0, 60.0, 150.0
+    else: 
+        t_sf, t_mf, t_ms, t_ss = -130.0 * volatility_buffer_factor, -55.0, 80.0, 250.0  # 5 Jahre
+
+    if vix_val > 25.0 and etf_net_flow < 0.0 and perf_val <= t_mf:
+        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse ({format_ger(etf_net_flow, 1)}M $) trotz Kursrücksetzer ({zeitraum}).")
+
+    if perf_val <= t_sf and macro_score >= 0 and (rsi_val is None or rsi_val <= 35): 
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Strikte RSI- & Makro-Prüfung bestanden. Deutlicher Kursrücksetzer ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
+    elif perf_val <= t_mf and macro_score >= 0: 
+        return ("KAUFEN 🟢", f"Moderat nachgebend im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%) bei stabilem Makro-Umfeld.")
+    elif perf_val >= t_ss and (fg_value >= 75 or macro_score < 0): 
+        return ("GEWINNE SICHERN 🔴🔴", f"Starker Preissprung ({zeitraum}: {format_ger(perf_val, 1, True)}%) bei Überhitzung.")
+    elif perf_val >= t_ms: 
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
+    else: 
+        return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
 
 # --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
@@ -995,7 +1047,6 @@ if current_data and len(current_data) > 0:
                     st.markdown("##### 📊 Signal-Zusammensetzung Score")
                     factor_scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_value, funding_rate=funding_rate_val, weights=active_weights)
                     
-                    # Hier wird der Chart mit expliziter Achsen-Sortierung und Sichtbarkeit für Trend & ETF erzeugt
                     df_scores = pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])
                     st.altair_chart(
                         alt.Chart(df_scores)
