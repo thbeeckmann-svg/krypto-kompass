@@ -283,6 +283,36 @@ def get_vix_and_nasdaq():
     return data
 
 @st.cache_data(ttl=120)
+def translate_to_german(text):
+    """Einfache, robuste Übersetzung gängiger Krypto-News-Begriffe ins Deutsche"""
+    if not text:
+        return text
+    
+    # Häufige Phrasen ersetzen
+    t = text
+    replacements = {
+        "says": "sagt,", "reports": "berichtet,", "Report:": "Bericht:",
+        "looking to enter": "plant den Einstieg in", "developing markets": "Schwellenländer",
+        "euro-area economy is resilient": "Eurozonen-Wirtschaft ist widerstandsfähig",
+        "digital euro imminent": "digitaler Euro steht bevor",
+        "to discontinue services for some users": "stellt Dienste für einige Nutzer ein",
+        "in one-off exercise": "im Rahmen einer einmaligen Maßnahme",
+        "Here's what happened in crypto today": "Das ist heute im Krypto-Markt passiert",
+        "escalate spending against": "verstärkt Ausgaben gegen",
+        "Senate race": "Senatsrennen", "market update": "Markt-Update",
+        "show steady institutional inflows": "zeigen stabile institutionelle Zuflüsse",
+        "Macroeconomic outlook": "Makroökonomischer Ausblick",
+        "Federal Reserve policy remains in focus": "Politik der US-Notenbank im Fokus",
+        "DeFi liquidity expands": "DeFi-Liquidität wächst",
+        "as total value locked reaches key resistance": "während der Gesamtwert (TVL) wichtige Widerstände erreicht",
+        "Surge": "Anstieg", "Rally": "Rallye", "Gain": "Gewinn", "Drop": "Rückgang", "Fall": "Fall", "Crash": "Crash"
+    }
+    
+    for eng, ger in replacements.items():
+        t = t.replace(eng, ger)
+    return t
+
+@st.cache_data(ttl=120)
 def get_news_sentiment_score():
     headers = {"User-Agent": "Mozilla/5.0"}
     headlines = []
@@ -326,7 +356,10 @@ def get_news_sentiment_score():
             if any(w in t_low for w in ["bear", "drop", "fall", "down", "low", "crash", "ban", "inflation", "loss", "risk"]):
                 sentiment_points -= 18
 
-    return max(-100, min(100, sentiment_points)), headlines[:5]
+    # Schlagzeilen direkt ins Deutsche übersetzen
+    translated_headlines = [translate_to_german(h) for h in headlines[:5]]
+
+    return max(-100, min(100, sentiment_points)), translated_headlines
 
 @st.cache_data(ttl=600)
 def get_defillama_metrics():
@@ -992,7 +1025,7 @@ with st.container(border=True):
             st.caption("Aktuelle Schlagzeilen:")
             for h in top_headlines: st.markdown(f"- *{h}*")
 
-# --- KRYPTO-AKADEMIE & LERNPFAD (NEU INTEGRIERT) ---
+# --- KRYPTO-AKADEMIE & LERNPFAD ---
 st.write("")
 with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
     st.markdown("""
@@ -1098,7 +1131,7 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                 if os.path.exists(LOG_FILE):
                     with open(LOG_FILE, "rb") as f: col_d1.download_button("📥 prediction_log.csv", f, file_name="prediction_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(MARKET_LOG_FILE):
-                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
+                    with open(MARKET_LOG_FILE, "rb") as f: col_d2.download_button("📥 market_log.csv", f, file_name="market_data_log.csv", mime="text/csv", use_container_width=True)
                 if os.path.exists(IMP_FILE):
                     with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e: st.warning(f"Fehler: {e}")
