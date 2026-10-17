@@ -557,12 +557,15 @@ def get_real_funding_rate(coin_name="Bitcoin"):
 
 # --- QUANT- & Z-SCORE PROGNOSE-LOGIK ---
 def evaluate_learning_data(df_archive, current_data):
-    stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0}
+    stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0, "total_checked": 0}
     if df_archive is None or df_archive.empty or not current_data: return stats
 
     for _, row in df_archive.iterrows():
         parsed_dt = pd.to_datetime(row.get("Datum", ""), errors="coerce")
-        if pd.notnull(parsed_dt) and (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() < 86400: continue
+        if pd.isnull(parsed_dt): continue
+        
+        time_diff_hours = (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() / 3600.0
+        if time_diff_hours < 24: continue
         
         c_name = row.get("Coin", "")
         price_then = float(row.get("Kurs_Damals", 0))
@@ -570,6 +573,7 @@ def evaluate_learning_data(df_archive, current_data):
         curr_price = current_data.get(c_name, {}).get("eur", 0)
         
         if price_then > 0 and curr_price > 0:
+            stats["total_checked"] += 1
             diff_pct = ((curr_price - price_then) / price_then) * 100
             if "KAUF" in signal:
                 if diff_pct >= -1.5: stats["buy_wins"] += 1
@@ -587,7 +591,7 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
     }
 
     if df_archive is None or df_archive.empty or not current_data:
-        return ("🧠 *Das Quant-Lernmodul analysiert historische Zyklen.*", default_weights)
+        return ("🧠 *Das Quant-Lernmodul analysiert historische Zyklen (wartet auf Einträge > 24h).* korrekt.", default_weights)
 
     stats = evaluate_learning_data(df_archive, current_data)
     buy_signals = stats["buy_wins"] + stats["buy_fails"]
@@ -610,7 +614,11 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
         optimizations.append("✅ **Quant-System-Status Optimal:** Gewichtungen stabil.")
 
     report = f"""
-#### 📊 Quant Self-Tuning (Dynamische Gewichtungs-Optimierung)
+#### 📊 Quant Self-Tuning & Treffer-Statistik
+* **Ausgewertete historische Signale:** {stats['total_checked']}
+* **Kauf-Trefferquote:** {stats['buy_wins']} Erfolge / {stats['buy_fails']} Fehlschläge
+* **Verkauf-Trefferquote:** {stats['sell_wins']} Erfolge / {stats['sell_fails']} Fehlschläge
+
 Basierend auf historischen Zyklen in `prediction_log.csv`:
 
 | Indikator | Basis-Gewichtung | Aktive Live-Gewichtung |
@@ -656,7 +664,6 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
     elif etf_net_flow <= -50.0: etf_score = -50
     else: etf_score = 5 if etf_net_flow >= 0 else -5
     
-    # Kraken Orderbuch Druck Score (-100 bis +100)
     kraken_score = max(-100.0, min(100.0, kraken_pressure * 2.5))
 
     if rsi_val is not None:
@@ -805,28 +812,38 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
 
+    new_row_data = {
+        "Datum": today_str, 
+        "Coin": coin, 
+        "Kurs_Damals": float(price),
+        "Signal": str(signal_text).split()[0], 
+        "FearGreed": int(fg_val),
+        "Target_Horizon": str(target_horizon), 
+        "Datenquelle": "Binance Spot REST API"
+    }
+
     if os.path.exists(LOG_FILE):
         try:
             df_log = pd.read_csv(LOG_FILE)
-            if "Target_Horizon" not in df_log.columns: df_log["Target_Horizon"] = "7 Tage"
+            for col in new_row_data.keys():
+                if col not in df_log.columns:
+                    df_log[col] = ""
+            
             df_log["DateOnly"] = df_log["Datum"].astype(str).str[:10]
             mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
+            
             if mask.any():
-                return
+                for key, val in new_row_data.items():
+                    df_log.loc[mask, key] = val
             else:
-                new_row = pd.DataFrame([{
-                    "Datum": today_str, "Coin": coin, "Kurs_Damals": price,
-                    "Signal": signal_text.split()[0], "FearGreed": fg_val,
-                    "Target_Horizon": target_horizon, "Datenquelle": "Binance Spot REST API"
-                }])
-                df_log = pd.concat([df_log.drop(columns=["DateOnly"], errors="ignore"), new_row], ignore_index=True)
-                save_and_commit_csv(LOG_FILE, df_log)
-        except: pass
+                df_log = pd.concat([df_log, pd.DataFrame([new_row_data])], ignore_index=True)
+            
+            df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
+            save_and_commit_csv(LOG_FILE, df_log)
+        except Exception:
+            pd.DataFrame([new_row_data]).to_csv(LOG_FILE, index=False)
     else:
-        save_and_commit_csv(LOG_FILE, pd.DataFrame([{
-            "Datum": today_str, "Coin": coin, "Kurs_Damals": price, "Signal": signal_text.split()[0],
-            "FearGreed": fg_val, "Target_Horizon": target_horizon, "Datenquelle": "Binance Spot REST API"
-        }]))
+        save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
 
 # SIGNAL-LOGIK (Z-SCORE & KRAKEN ORDERBUCH)
 def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None):
@@ -900,6 +917,10 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
         ausgewaehlte_coins = st.multiselect("Kryptowährungen anzeigen:", options=list(coins_map.keys()), default=list(coins_map.keys()))
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
+
+    st.write("---")
+    # Hier wird das automatisierte Lernen und die Statistik direkt im UI angezeigt!
+    st.markdown(local_learning_report)
 
     st.write("---")
     manuelle_gewichtung = st.checkbox("🎛️ Manuelle Indikator-Gewichtung nutzen (übersteuert Quant-Automatik)", value=False)
@@ -1147,7 +1168,7 @@ with st.container(border=True):
         oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
         copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
         vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
-        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#2ecc71"
         etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(f"""
