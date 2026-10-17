@@ -210,6 +210,29 @@ def get_current_data():
                     pass
     return data if data else None
 
+@st.cache_data(ttl=30)
+def get_kraken_orderbook_pressure(coin_name="Bitcoin"):
+    kraken_pairs = {"Bitcoin": "XXBTZEUR", "Ethereum": "XETHZEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+    pair = kraken_pairs.get(coin_name, "XXBTZEUR")
+    try:
+        url = f"https://api.kraken.com/0/public/Depth?pair={pair}&count=25"
+        res = requests.get(url, timeout=4)
+        if res.status_code == 200:
+            data = res.json().get("result", {})
+            key = list(data.keys())[0] if data else None
+            if key:
+                bids = data[key].get("bids", [])
+                asks = data[key].get("asks", [])
+                bid_volume = sum([float(b[1]) for b in bids])
+                ask_volume = sum([float(a[1]) for a in asks])
+                total = bid_volume + ask_volume
+                if total > 0:
+                    pressure = ((bid_volume - ask_volume) / total) * 100
+                    return round(pressure, 1)
+    except:
+        pass
+    return 0.0
+
 @st.cache_data(ttl=300)
 def get_real_spot_etf_flows():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -313,18 +336,34 @@ def get_news_sentiment_score():
     news_items = []
     sentiment_points = 25
 
-    try:
-        res = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
-        if res.status_code == 200:
-            root = ET.fromstring(res.text)
-            for item in root.findall(".//item")[:5]:
-                title_elem = item.find("title")
-                link_elem = item.find("link")
-                if title_elem is not None and title_elem.text:
-                    title = title_elem.text.strip()
-                    link = link_elem.text.strip() if link_elem is not None and link_elem.text else "https://cointelegraph.com"
-                    news_items.append((title, link))
-    except: pass
+    cryptopanic_token = st.secrets.get("CRYPTOPANIC_API_KEY", "")
+    if cryptopanic_token:
+        try:
+            cp_url = f"https://cryptopanic.com/api/v1/posts/?auth_token={cryptopanic_token}&public=true"
+            res = requests.get(cp_url, timeout=4)
+            if res.status_code == 200:
+                results = res.json().get("results", [])
+                for post in results[:5]:
+                    title = post.get("title", "")
+                    url = post.get("url", "https://cryptopanic.com")
+                    if title:
+                        news_items.append((title, url))
+        except:
+            pass
+
+    if not news_items:
+        try:
+            res = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                for item in root.findall(".//item")[:5]:
+                    title_elem = item.find("title")
+                    link_elem = item.find("link")
+                    if title_elem is not None and title_elem.text:
+                        title = title_elem.text.strip()
+                        link = link_elem.text.strip() if link_elem is not None and link_elem.text else "https://cointelegraph.com"
+                        news_items.append((title, link))
+        except: pass
 
     if len(news_items) < 3:
         try:
@@ -543,7 +582,7 @@ def evaluate_learning_data(df_archive, current_data):
 def generate_local_self_learning_optimizations(df_archive, current_data):
     default_weights = {
         "Trend & Momentum": 15.0, "ETF Net Flows": 15.0, "Makro (Zins/Aktien/Währung/VIX)": 15.0,
-        "Fear & Greed Index": 15.0, "Funding Rates & Derivate": 15.0, "RSI & Volatilität": 10.0,
+        "Fear & Greed Index": 15.0, "Kraken Orderbuch-Druck": 15.0, "RSI & Volatilität": 10.0,
         "Nachrichten & Zins-Sentiment": 10.0, "Krypto-Liquidität & DeFi TVL": 5.0,
     }
 
@@ -563,10 +602,10 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
         weights["Nachrichten & Zins-Sentiment"] += 1.0
         optimizations.append("⚠️ **Adaptive Anpassung Kauf-Signale:** Makro- und Zins-Einfluss dynamisch gestärkt.")
     if sell_signals > 0 and (stats["sell_fails"] / sell_signals) > 0.3:
-        weights["Funding Rates & Derivate"] += 2.0
+        weights["Kraken Orderbuch-Druck"] += 2.0
         weights["RSI & Volatilität"] += 1.0
         weights["Trend & Momentum"] -= 3.0
-        optimizations.append("⚠️ **Adaptive Anpassung Verkauf-Signale:** Derivate-Raten & RSI höher gewichtet.")
+        optimizations.append("⚠️ **Adaptive Anpassung Verkauf-Signale:** Kraken Orderbuch & RSI höher gewichtet.")
     if not optimizations:
         optimizations.append("✅ **Quant-System-Status Optimal:** Gewichtungen stabil.")
 
@@ -580,7 +619,7 @@ Basierend auf historischen Zyklen in `prediction_log.csv`:
 | **ETF Net Flows (Spot)** | 15,0 % | **{format_ger(weights['ETF Net Flows'], 1)} %** |
 | **Makro & VIX** | 15,0 % | **{format_ger(weights['Makro (Zins/Aktien/Währung/VIX)'], 1)} %** |
 | **Fear & Greed Index** | 15,0 % | **{format_ger(weights['Fear & Greed Index'], 1)} %** |
-| **Funding Rates & Derivate** | 15,0 % | **{format_ger(weights['Funding Rates & Derivate'], 1)} %** |
+| **Kraken Orderbuch-Druck** | 15,0 % | **{format_ger(weights['Kraken Orderbuch-Druck'], 1)} %** |
 | **RSI & Volatilität** | 10,0 % | **{format_ger(weights['RSI & Volatilität'], 1)} %** |
 | **Nachrichten & Zins-Sentiment** | 10,0 % | **{format_ger(weights['Nachrichten & Zins-Sentiment'], 1)} %** |
 | **DeFi TVL & Liq.** | 5,0 % | **{format_ger(weights['Krypto-Liquidität & DeFi TVL'], 1)} %** |
@@ -590,20 +629,19 @@ Basierend auf historischen Zyklen in `prediction_log.csv`:
 
     return report, weights
 
-def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
+def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=0.0, rsi_val=None, weights=None):
     if weights is None:
         weights = {
             "Trend & Momentum": 15.0, 
             "ETF Net Flows": 15.0, 
             "Makro (Zins/Aktien/Währung/VIX)": 15.0, 
             "Fear & Greed Index": 15.0, 
-            "Funding Rates & Derivate": 15.0, 
+            "Kraken Orderbuch-Druck": 15.0, 
             "RSI & Volatilität": 10.0, 
             "Nachrichten & Zins-Sentiment": 10.0, 
             "Krypto-Liquidität & DeFi TVL": 5.0
         }
 
-    # Robuste Scores, damit bei 0 ein minimaler Ausschlag (z.B. 5 oder -5) angezeigt wird statt komplett 0
     if perf_val <= -7.5: trend_score = 80
     elif perf_val <= -3.0: trend_score = 40
     elif perf_val >= 7.5: trend_score = -80
@@ -618,10 +656,8 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
     elif etf_net_flow <= -50.0: etf_score = -50
     else: etf_score = 5 if etf_net_flow >= 0 else -5
     
-    if funding_rate is not None:
-        funding_score = -100 if funding_rate >= 0.0004 else (-60 if funding_rate >= 0.0002 else (100 if funding_rate <= -0.0003 else (60 if funding_rate <= -0.0001 else 10)))
-    else:
-        funding_score = -50 if perf_val > 5.0 else (50 if perf_val < -5.0 else 10)
+    # Kraken Orderbuch Druck Score (-100 bis +100)
+    kraken_score = max(-100.0, min(100.0, kraken_pressure * 2.5))
 
     if rsi_val is not None:
         if rsi_val <= 28:
@@ -666,7 +702,7 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
     w_etf = weights.get('ETF Net Flows', 15.0)
     w_macro = weights.get('Makro (Zins/Aktien/Währung/VIX)', 15.0)
     w_fg = weights.get('Fear & Greed Index', 15.0)
-    w_fund = weights.get('Funding Rates & Derivate', 15.0)
+    w_kraken = weights.get('Kraken Orderbuch-Druck', 15.0)
     w_rsi = weights.get('RSI & Volatilität', 10.0)
     w_news = weights.get('Nachrichten & Zins-Sentiment', 10.0)
     w_liq = weights.get('Krypto-Liquidität & DeFi TVL', 5.0)
@@ -676,20 +712,20 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
         f"ETF Net Flows ({w_etf:.0f}%)": etf_score,
         f"Makro & VIX ({w_macro:.0f}%)": max(-100, min(100, macro_points)),
         f"Fear & Greed ({w_fg:.0f}%)": sentiment_score,
-        f"Funding & Derivate ({w_fund:.0f}%)": funding_score,
+        f"Kraken Orderbuch ({w_kraken:.0f}%)": kraken_score,
         f"RSI & Volatilität ({w_rsi:.0f}%)": rsi_score,
         f"News & Zins ({w_news:.0f}%)": max(-100, min(100, news_score)),
         f"DeFi TVL & Liq. ({w_liq:.0f}%)": liq_score,
     }
 
-def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=None, funding_rate=None, weights=None):
-    scores = calculate_detailed_factor_scores(change_24h, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
+def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=0.0, rsi_val=None, weights=None):
+    scores = calculate_detailed_factor_scores(change_24h, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     total = 0.0
     for key, score_val in scores.items():
         base_key = key.split(" (")[0].strip()
         matched_w = 0.0
         for wk, wv in weights.items():
-            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()) or ("trend" in wk.lower() and "trend" in base_key.lower()):
+            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()) or ("trend" in wk.lower() and "trend" in base_key.lower()) or ("kraken" in wk.lower() and "kraken" in base_key.lower()):
                 matched_w = wv
                 break
         total += score_val * (matched_w / 100.0)
@@ -792,12 +828,11 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
             "FearGreed": fg_val, "Target_Horizon": target_horizon, "Datenquelle": "Binance Spot REST API"
         }]))
 
-# VERBESSERTE SIGNAL-LOGIK (Z-SCORE & STATISTISCHE STANDARDABWEICHUNG)
-def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, zeitraum, weights, rsi_val=None, funding_rate=None):
-    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_val, funding_rate=funding_rate, weights=weights)
+# SIGNAL-LOGIK (Z-SCORE & KRAKEN ORDERBUCH)
+def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None):
+    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
-    # Statistischer Z-Score basierend auf historischen Kursen
     if hist_prices is not None and len(hist_prices) >= 10:
         series = pd.Series(hist_prices)
         ma = series.rolling(window=min(15, len(series))).mean().iloc[-1]
@@ -875,7 +910,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
             "ETF Net Flows": float(col_w2.slider("ETF Net Flows (%)", 0, 50, 15)),
             "Makro (Zins/Aktien/Währung/VIX)": float(col_w3.slider("Makro & VIX (%)", 0, 50, 15)),
             "Fear & Greed Index": float(col_w4.slider("Fear & Greed (%)", 0, 50, 15)),
-            "Funding Rates & Derivate": float(col_w1.slider("Funding Rate (%)", 0, 50, 15)),
+            "Kraken Orderbuch-Druck": float(col_w1.slider("Kraken Orderbuch (%)", 0, 50, 15)),
             "RSI & Volatilität": float(col_w2.slider("RSI & Vola (%)", 0, 50, 10)),
             "Nachrichten & Zins-Sentiment": float(col_w3.slider("News/Zinsen (%)", 0, 50, 10)),
             "Krypto-Liquidität & DeFi TVL": float(col_w4.slider("DeFi TVL & Liq (%)", 0, 50, 5)),
@@ -896,7 +931,7 @@ elif zeitraum_wahl == "6 Monate": limit_anzahl, interval, wöchentlich = 180, "1
 elif zeitraum_wahl == "1 Jahr": limit_anzahl, interval, wöchentlich = 365, "1d", True
 elif zeitraum_wahl == "2 Jahre": limit_anzahl, interval, wöchentlich = 104, "1wk", True
 elif zeitraum_wahl == "3 Jahre": limit_anzahl, interval, wöchentlich = 156, "1wk", True
-else: limit_anzahl, interval, wöchentlich = 260, "1wk", True  # 5 Jahre (Zyklus)
+else: limit_anzahl, interval, wöchentlich = 260, "1wk", True
 
 nikkei_val = asian_markets.get("Nikkei_225", {}).get("value") if asian_markets else None
 nikkei_chg = asian_markets.get("Nikkei_225", {}).get("change") if asian_markets else 0.0
@@ -921,7 +956,7 @@ if current_data and len(current_data) > 0:
 
             atr_value = calculate_atr(symbol, current_price=price, limit=30)
             rsi_value = get_real_rsi(symbol, limit=30)
-            funding_rate_val = get_real_funding_rate(coin)
+            kraken_pressure = get_kraken_orderbook_pressure(coin)
 
             stop_loss = max(0.0, price - (2.0 * atr_value)) if atr_value > 0 else price * 0.95
             take_profit = price + (3.0 * atr_value) if atr_value > 0 else price * 1.08
@@ -934,14 +969,14 @@ if current_data and len(current_data) > 0:
                 hist_prices_list = df_history["Kurs"].tolist()
                 if hist_price > 0: perf_val = ((price - hist_price) / hist_price) * 100
 
-            signal, reason = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, zeitraum_wahl, active_weights, rsi_val=rsi_value, funding_rate=funding_rate_val)
+            signal, reason = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value)
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
             log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
 
             coin_results[coin] = {
                 "symbol": symbol, "price": price, "change_24h": change_24h, "volume": volume,
-                "atr_value": atr_value, "rsi_value": rsi_value, "funding_rate_val": funding_rate_val,
+                "atr_value": atr_value, "rsi_value": rsi_value, "kraken_pressure": kraken_pressure,
                 "stop_loss": stop_loss, "take_profit": take_profit, "df_history": df_history,
                 "perf_val": perf_val, "hist_price": hist_price, "signal": signal, "reason": reason, "whale_msg": whale_msg
             }
@@ -982,7 +1017,7 @@ if current_data and len(current_data) > 0:
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
         for coin, res in coin_results.items():
-            price, change_24h, volume, atr_value, rsi_value, funding_rate_val, stop_loss, take_profit, perf_val, hist_price, df_history, signal, reason, whale_msg, investition_eur, investition_pct = res["price"], res["change_24h"], res["volume"], res["atr_value"], res["rsi_value"], res["funding_rate_val"], res["stop_loss"], res["take_profit"], res["perf_val"], res["hist_price"], res["df_history"], res["signal"], res["reason"], res["whale_msg"], res["investition_eur"], res["investition_pct"]
+            price, change_24h, volume, atr_value, rsi_value, kraken_pressure, stop_loss, take_profit, perf_val, hist_price, df_history, signal, reason, whale_msg, investition_eur, investition_pct = res["price"], res["change_24h"], res["volume"], res["atr_value"], res["rsi_value"], res["kraken_pressure"], res["stop_loss"], res["take_profit"], res["perf_val"], res["hist_price"], res["df_history"], res["signal"], res["reason"], res["whale_msg"], res["investition_eur"], res["investition_pct"]
 
             coin_menge = investition_eur / price if price > 0 else 0.0
             logo_url, symbol = CRYPTO_LOGOS.get(coin, ""), CRYPTO_SYMBOLS.get(coin, "")
@@ -1023,8 +1058,8 @@ if current_data and len(current_data) > 0:
                     st.markdown(f"• 🛡️ **Absolutes Risiko bei Stop-Loss:** **{format_ger(risk_amount_eur, 2)} €** ({max_risk_pct}% des Gesamtkapitals)")
 
                     st.write("---")
-                    st.markdown("##### 📊 Live-Marktindikatoren & Wal-Tracker")
-                    st.caption(f"🏛 **Spot-ETF Net Flow:** **{format_ger(real_etf_flow, 1, True)}M $**\n\n📊 **RSI (14):** **{format_ger(rsi_value, 1)}** | ⚡ **Funding Rate:** **{format_ger(funding_rate_val*100, 3, True)}%**\n\n📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 🔒 **DeFi TVL:** **{format_ger(llama_data.get('global_tvl_b', 0), 1)} Mrd. $**\n\n🐋 **Wal-Aktivität:** {whale_msg}")
+                    st.markdown("##### 📊 Live-Marktindikatoren & Kraken Orderbuch")
+                    st.caption(f"🏛 **Spot-ETF Net Flow:** **{format_ger(real_etf_flow, 1, True)}M $**\n\n📊 **RSI (14):** **{format_ger(rsi_value, 1)}** | 📈 **Kraken Orderbuch-Druck:** **{format_ger(kraken_pressure, 1, True)}%**\n\n📰 **News/Zins-Sentiment:** **{news_score:+d} / 100** | 🔒 **DeFi TVL:** **{format_ger(llama_data.get('global_tvl_b', 0), 1)} Mrd. $**\n\n🐋 **Wal-Aktivität:** {whale_msg}")
 
                     st.write("---")
                     st.markdown("##### 🛡️ ATR Risikomanagement")
@@ -1034,11 +1069,9 @@ if current_data and len(current_data) > 0:
 
                     st.write("---")
                     st.markdown("##### 📊 Signal-Zusammensetzung Score")
-                    factor_scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, rsi_val=rsi_value, funding_rate=funding_rate_val, weights=active_weights)
+                    factor_scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_value, weights=active_weights)
                     
                     df_scores = pd.DataFrame(list(factor_scores.items()), columns=["Indikator", "Score"])
-                    
-                    # Feste Reihenfolge der Indikatoren erzwingen
                     indikatoren_reihenfolge = list(factor_scores.keys())
 
                     st.altair_chart(
@@ -1176,7 +1209,7 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
     st.markdown("- **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.")
     st.markdown("- **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.")
-    st.markdown("- **Funding Rates:** Positive Raten bedeuten Long-Überhang (Longs zahlen an Shorts) – oft ein Indikator für bevorstehende Long-Squeezes.")
+    st.markdown("- **Kraken Orderbuch-Druck:** Zeigt das Verhältnis von Kauf- (Bids) zu Verkaufsorders (Asks) direkt im Kraken-Orderbuch. Positive Werte signalisieren akuten Käuferdruck.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
