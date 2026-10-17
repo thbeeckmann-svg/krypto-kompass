@@ -427,17 +427,19 @@ def analyze_whale_activity(volume, change_24h):
         return ("🟡 Unauffällige On-Chain-Aktivität", 0)
 
 @st.cache_data(ttl=30)
-def calculate_atr(symbol, limit=30):
+def calculate_atr(symbol, current_price=0.0, limit=30):
     symbol_yf_map = {"BTCEUR": "BTC-EUR", "ETHEUR": "ETH-EUR", "SOLEUR": "SOL-EUR", "ADAEUR": "ADA-EUR", "BCHEUR": "BCH-EUR"}
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit={limit}"
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
-            df = pd.DataFrame(response.json(), columns=["ot", "o", "high", "low", "close", "v", "ct", "qav", "nt", "tbb", "tbq", "i"])
-            df[["high", "low", "close"]] = df[["high", "low", "close"]].astype(float)
-            df["tr"] = df[["high"]].sub(df["low"], axis=0).combine(df["high"].sub(df["close"].shift(1)).abs(), max).combine(df["low"].sub(df["close"].shift(1)).abs(), max)
-            val = float(df["tr"].rolling(window=14).mean().iloc[-1])
-            if val > 0: return val
+            raw = response.json()
+            if isinstance(raw, list) and len(raw) > 5:
+                df = pd.DataFrame(raw, columns=["ot", "o", "high", "low", "close", "v", "ct", "qav", "nt", "tbb", "tbq", "i"])
+                df[["high", "low", "close"]] = df[["high", "low", "close"]].astype(float)
+                df["tr"] = df[["high"]].sub(df["low"], axis=0).combine(df["high"].sub(df["close"].shift(1)).abs(), max).combine(df["low"].sub(df["close"].shift(1)).abs(), max)
+                val = float(df["tr"].rolling(window=14).mean().iloc[-1])
+                if val > 0: return val
     except: pass
     try:
         df = yf.Ticker(symbol_yf_map.get(symbol, "BTC-EUR")).history(period="60d")
@@ -447,6 +449,9 @@ def calculate_atr(symbol, limit=30):
             val = float(df["tr"].rolling(window=14).mean().iloc[-1])
             if val > 0: return val
     except: pass
+    # Robuster Fallback: 3% des aktuellen Preises als realistische ATR
+    if current_price > 0:
+        return current_price * 0.03
     return 0.0
 
 @st.cache_data(ttl=30)
@@ -500,7 +505,7 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
         if pd.notnull(parsed_dt):
             now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
             if (now_dt - parsed_dt).total_seconds() < 86400:
-                continue  # Heute erstellte Signale noch nicht im Backtest werten
+                continue
 
         c_name = row.get("Coin", "")
         price_then = float(row.get("Kurs_Damals", 0))
@@ -787,7 +792,7 @@ if current_data and len(current_data) > 0:
             change_24h = values.get("eur_24h_change", 0)
             volume = values.get("volume", 0)
 
-            atr_value = calculate_atr(symbol, limit=30)
+            atr_value = calculate_atr(symbol, current_price=price, limit=30)
             rsi_value = get_real_rsi(symbol, limit=30)
             funding_rate_val = get_real_funding_rate(coin)
 
