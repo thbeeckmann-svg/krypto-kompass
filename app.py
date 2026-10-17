@@ -286,7 +286,7 @@ def get_vix_and_nasdaq():
 def get_news_sentiment_score():
     headers = {"User-Agent": "Mozilla/5.0"}
     headlines = []
-    sentiment_points = 25  # Neutraler Basiswert
+    sentiment_points = 25
 
     try:
         res = requests.get("https://cointelegraph.com/rss", headers=headers, timeout=4)
@@ -496,6 +496,12 @@ def generate_local_self_learning_optimizations(df_archive, df_market, current_da
     buy_signals, sell_signals, failed_buys, failed_sells = 0, 0, 0, 0
 
     for idx, row in df_archive.iterrows():
+        parsed_dt = pd.to_datetime(row.get("Datum", ""), errors="coerce")
+        if pd.notnull(parsed_dt):
+            now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
+            if (now_dt - parsed_dt).total_seconds() < 86400:
+                continue  # Heute erstellte Signale noch nicht im Backtest werten
+
         c_name = row.get("Coin", "")
         price_then = float(row.get("Kurs_Damals", 0))
         signal = str(row.get("Signal", "")).upper()
@@ -999,21 +1005,31 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest**", expanded=Fal
                     kurs_aktuell = current_data.get(c_name, {}).get("eur", 0)
                     diff_pct = (((kurs_aktuell - kurs_damals) / kurs_damals) * 100) if kurs_damals > 0 and kurs_aktuell > 0 else 0.0
 
-                    if "KAUF" in signal_damals: sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
-                    sim_depot_hold *= 1.0 + (diff_pct / 100.0)
+                    is_today = False
+                    if pd.notnull(parsed_dt):
+                        now_dt = datetime.now(BERLIN_TZ).replace(tzinfo=None)
+                        if (now_dt - parsed_dt).total_seconds() < 86400:
+                            is_today = True
+
+                    if not is_today:
+                        if "KAUF" in signal_damals: sim_depot_signal *= 1.0 + (max(-5.0, min(5.0, diff_pct)) / 100.0)
+                        sim_depot_hold *= 1.0 + (diff_pct / 100.0)
 
                     dt_obj = parsed_dt if pd.notnull(parsed_dt) else pd.to_datetime(row["Datum"])
                     backtest_data.append({"Datum": dt_obj, "App-Strategie": round(sim_depot_signal, 2), "Buy & Hold": round(sim_depot_hold, 2)})
 
-                    evaluation = "Neutral 🟡"
-                    if "KAUF" in signal_damals:
-                        total_evaluated += 1
-                        if diff_pct > -1.5: correct_hits += 1; evaluation = "Treffer 🟢"
-                        else: evaluation = "Fehlsignal 🔴"
-                    elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
-                        total_evaluated += 1
-                        if diff_pct < 1.5: correct_hits += 1; evaluation = "Schutz 🟢"
-                        else: evaluation = "Seitwärts 🟡"
+                    if is_today:
+                        evaluation = "Laufend ⏳"
+                    else:
+                        evaluation = "Neutral 🟡"
+                        if "KAUF" in signal_damals:
+                            total_evaluated += 1
+                            if diff_pct > -1.5: correct_hits += 1; evaluation = "Treffer 🟢"
+                            else: evaluation = "Fehlsignal 🔴"
+                        elif "VORSICHT" in signal_damals or "GEWINN" in signal_damals:
+                            total_evaluated += 1
+                            if diff_pct < 1.5: correct_hits += 1; evaluation = "Schutz 🟢"
+                            else: evaluation = "Seitwärts 🟡"
 
                     comparison_rows.append({"Datum": datum_formatted, "Coin": c_name, "Horizon": horizon, "Signal": signal_damals, "Kurs Damals": f"{format_ger(kurs_damals, 2 if kurs_damals >= 1 else 4)} €", "Aktuell": f"{format_ger(kurs_aktuell, 2 if kurs_aktuell >= 1 else 4)} €", "Diff (%)": format_ger(diff_pct, 2, True) + " %", "Auswertung": evaluation})
 
