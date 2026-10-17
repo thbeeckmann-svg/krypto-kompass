@@ -754,35 +754,13 @@ def generate_signal(perf_val, volume, fg_value, bond_change, asian_markets, euro
     elif perf_val >= t_ms: return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs ({zeitraum}: {format_ger(perf_val, 1, True)}%).")
     else: return ("HALTEN 🟡", f"Seitwärtsphase im Zeitraum {zeitraum} ({format_ger(perf_val, 1, True)}%).")
 
-# --- APP START & ADMIN-NACHRICHTENFENSTER ---
+# --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
 df_archive_check = pd.read_csv(LOG_FILE) if os.path.exists(LOG_FILE) else pd.DataFrame()
 
 learning_stats = evaluate_learning_data(df_archive_check, current_data)
 total_wins, total_fails, win_rate, admin_prompt = generate_admin_prompt(learning_stats)
 
-if "admin_msg_dismissed" not in st.session_state:
-    st.session_state.admin_msg_dismissed = False
-
-if not st.session_state.admin_msg_dismissed and (total_wins + total_fails) > 0:
-    with st.container(border=True):
-        st.markdown("### 🤖 Administrator-Konsole: Autonomes Lernsystem")
-        st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("✅ Erfolgreiche Prognosen", total_wins)
-        col2.metric("❌ Fehlsignale", total_fails)
-        col3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
-        
-        st.markdown("**KI-generierter Verbesserungsvorschlag (Copy & Paste):**")
-        st.code(admin_prompt, language="markdown")
-        
-        if st.button("Verstanden & Ausblenden", use_container_width=True):
-            st.session_state.admin_msg_dismissed = True
-            st.rerun()
-    st.markdown("---")
-
-# --- LIVE-DATEN ABRUFEN ---
 bond_val, bond_change = get_macro_bond_yield()
 ext_macro = get_extended_macro_data()
 stock_indices = get_stock_indices()
@@ -1233,6 +1211,19 @@ with st.expander("🧠 **Autonomes Selbstlern-System & Backtest (3-Jahres-Modus)
                 if os.path.exists(IMP_FILE):
                     with open(IMP_FILE, "rb") as f: col_d3.download_button("📥 improvements.csv", f, file_name="improvements_log.csv", mime="text/csv", use_container_width=True)
         except Exception as e: st.warning(f"Fehler: {e}")
+
+# --- NEU: ADMINISTRATOR-KONSOLE ALS AUFKLAPPBARES FENSTER (GANZ UNTEN) ---
+st.write("")
+with st.expander("🤖 **Administrator-Konsole: Autonomes Lernsystem**", expanded=False):
+    st.info("Das KI-Modul hat die vergangenen Marktzyklen ausgewertet. Hier ist der aktuelle Status sowie die Anweisungen zur automatisierten Code-Verbesserung.")
+    
+    col_a1, col_a2, col_a3 = st.columns(3)
+    col_a1.metric("✅ Erfolgreiche Prognosen", total_wins)
+    col_a2.metric("❌ Fehlsignale", total_fails)
+    col_a3.metric("🎯 KI-Trefferquote", f"{win_rate:.1f}%")
+    
+    st.markdown("**KI-generierter Verbesserungsvorschlag (Copy & Paste):**")
+    st.code(admin_prompt, language="markdown")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
