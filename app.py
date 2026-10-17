@@ -1082,7 +1082,48 @@ if current_data and len(current_data) > 0:
                 col_s1.markdown(f"**Signal:** {signal}")
                 col_s2.markdown(f"**Tranche:** **{format_ger(investition_eur, 2)} €** ({format_ger(investition_pct, 1)}%)")
 
-                with st.expander("🔍 **Details, Analyse & Chart**", expanded=False):
+                # --- DIAGRAMM & RÜCKBLICK DIREKT ANZEIGEN ---
+                st.write("---")
+                if hist_price > 0: 
+                    st.markdown(f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{format_ger(hist_price, dec)} €** | Aktuell: **{format_ger(price, dec)} €**")
+
+                if df_history is not None and not df_history.empty:
+                    df_chart = df_history.reset_index().copy()
+                    if len(df_chart) >= 5: 
+                        df_chart["EMA"] = df_chart["Kurs"].ewm(span=min(10, len(df_chart)), adjust=True).mean()
+                    
+                    min_p, max_p = df_chart["Kurs"].min(), df_chart["Kurs"].max()
+                    puffer = (max_p - min_p) * 0.08 if max_p != min_p else min_p * 0.01
+                    chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
+
+                    date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m.%Y" if zeitraum_wahl in ["2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"] else "%d.%m.")
+                    y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
+
+                    x_axis = alt.Axis(
+                        format=date_format,
+                        labelAngle=0,
+                        labels=True,
+                        labelFlush=False,
+                        grid=True,
+                        gridDash=[2, 2],
+                        gridColor="rgba(150, 150, 150, 0.15)",
+                        tickCount=6 if zeitraum_wahl == "24 Stunden" else 5
+                    )
+
+                    base = alt.Chart(df_chart).encode(
+                        x=alt.X("Timestamp:T", title=None, axis=x_axis),
+                        y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)"))
+                    )
+                    chart_layers = base.mark_area(opacity=0.15, color=chart_color, interpolate="monotone") + base.mark_line(color=chart_color, strokeWidth=2.2, interpolate="monotone")
+                    if "EMA" in df_chart.columns: 
+                        chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3], interpolate="monotone").encode(y=alt.Y("EMA:Q"))
+                    
+                    tooltip_format = ",.4f €" if max_p < 1 else ",.2f €"
+                    tooltip_time_format = "%d.%m.%Y %H:%M" if zeitraum_wahl != "24 Stunden" else "%H:%M Uhr"
+                    st.altair_chart((chart_layers + base.mark_point(size=45, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format=tooltip_time_format), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
+
+                # --- WEITERE DETAILS IM EXPANDER ---
+                with st.expander("🔍 **Details, Analyse & Signal-Zusammensetzung**", expanded=False):
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
                     
@@ -1129,43 +1170,6 @@ if current_data and len(current_data) > 0:
                         .properties(height=280),
                         use_container_width=True
                     )
-
-                    if hist_price > 0: st.markdown(f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{format_ger(hist_price, dec)} €** | Aktuell: **{format_ger(price, dec)} €**", unsafe_allow_html=True)
-
-                    if df_history is not None and not df_history.empty:
-                        df_chart = df_history.reset_index().copy()
-                        if len(df_chart) >= 5: 
-                            df_chart["EMA"] = df_chart["Kurs"].ewm(span=min(10, len(df_chart)), adjust=True).mean()
-                        
-                        min_p, max_p = df_chart["Kurs"].min(), df_chart["Kurs"].max()
-                        puffer = (max_p - min_p) * 0.08 if max_p != min_p else min_p * 0.01
-                        chart_color = "#2ecc71" if perf_val >= 0 else "#e74c3c"
-
-                        date_format = "%H:%M" if zeitraum_wahl == "24 Stunden" else ("%d.%m.%Y" if zeitraum_wahl in ["2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"] else "%d.%m.")
-                        y_format = ",.4f" if max_p < 1 else (",.2f" if max_p < 10 else ",.0f")
-
-                        x_axis = alt.Axis(
-                            format=date_format,
-                            labelAngle=0,
-                            labels=True,
-                            labelFlush=False,
-                            grid=True,
-                            gridDash=[2, 2],
-                            gridColor="rgba(150, 150, 150, 0.15)",
-                            tickCount=6 if zeitraum_wahl == "24 Stunden" else 5
-                        )
-
-                        base = alt.Chart(df_chart).encode(
-                            x=alt.X("Timestamp:T", title=None, axis=x_axis),
-                            y=alt.Y("Kurs:Q", title="€", scale=alt.Scale(domain=[min_p - puffer, max_p + puffer], zero=False), axis=alt.Axis(format=y_format, grid=True, gridColor="rgba(150, 150, 150, 0.15)"))
-                        )
-                        chart_layers = base.mark_area(opacity=0.15, color=chart_color, interpolate="monotone") + base.mark_line(color=chart_color, strokeWidth=2.2, interpolate="monotone")
-                        if "EMA" in df_chart.columns: 
-                            chart_layers += base.mark_line(color="#e67e22", strokeWidth=1.5, strokeDash=[3, 3], interpolate="monotone").encode(y=alt.Y("EMA:Q"))
-                        
-                        tooltip_format = ",.4f €" if max_p < 1 else ",.2f €"
-                        tooltip_time_format = "%d.%m.%Y %H:%M" if zeitraum_wahl != "24 Stunden" else "%H:%M Uhr"
-                        st.altair_chart((chart_layers + base.mark_point(size=45, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format=tooltip_time_format), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
 else:
     st.warning("Konnte keine Marktdaten laden.")
 
