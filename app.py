@@ -557,6 +557,30 @@ def get_real_funding_rate(coin_name="Bitcoin"):
     return 0.0001
 
 # --- QUANT- & Z-SCORE PROGNOSE-LOGIK ---
+def parse_horizon_to_hours(horizon_str):
+    if not isinstance(horizon_str, str):
+        return 24.0
+    h_lower = horizon_str.lower()
+    if "24" in h_lower or "stunden" in h_lower:
+        return 24.0
+    elif "7" in h_lower or "tag" in h_lower:
+        return 7.0 * 24.0
+    elif "30" in h_lower:
+        return 30.0 * 24.0
+    elif "90" in h_lower:
+        return 90.0 * 24.0
+    elif "6" in h_lower and "monat" in h_lower:
+        return 180.0 * 24.0
+    elif "1" in h_lower and "jahr" in h_lower:
+        return 365.0 * 24.0
+    elif "2" in h_lower and "jahr" in h_lower:
+        return 730.0 * 24.0
+    elif "3" in h_lower and "jahr" in h_lower:
+        return 1095.0 * 24.0
+    elif "5" in h_lower or "zyklus" in h_lower:
+        return 1825.0 * 24.0
+    return 24.0
+
 def evaluate_learning_data(df_archive, current_data):
     stats = {"buy_wins": 0, "buy_fails": 0, "sell_wins": 0, "sell_fails": 0, "total_checked": 0}
     if df_archive is None or df_archive.empty or not current_data: return stats
@@ -566,7 +590,13 @@ def evaluate_learning_data(df_archive, current_data):
         if pd.isnull(parsed_dt): continue
         
         time_diff_hours = (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() / 3600.0
-        if time_diff_hours < 0.5: continue
+        
+        # Zeitraumbewusste Reifezeit für das Selbstlernmodul
+        target_horizon_str = str(row.get("Target_Horizon", "7 Tage"))
+        required_hours = parse_horizon_to_hours(target_horizon_str)
+        
+        if time_diff_hours < required_hours: 
+            continue
         
         c_name = row.get("Coin", "")
         price_then = float(row.get("Kurs_Damals", 0))
@@ -821,7 +851,7 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
         if os.path.exists(LOG_FILE):
             df_existing = pd.read_csv(LOG_FILE)
             df_existing["DateOnly"] = df_existing["Datum"].astype(str).str[:10]
-            mask = (df_existing["DateOnly"] == date_only) & (df_existing["Coin"] == coin)
+            mask = (df_existing["DateOnly"] == date_only) & (df_existing["Coin"] == coin) & (df_existing["Target_Horizon"] == str(target_horizon))
             
             if mask.any():
                 for key, val in new_row_data.items():
@@ -1191,7 +1221,7 @@ if current_data and len(current_data) > 0:
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
                     z_color = "#2ecc71" if z_score <= -0.9 else ("#e74c3c" if z_score >= 1.5 else "#3498db")
-                    st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;`>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
+                    st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;'>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
                     
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
                     
