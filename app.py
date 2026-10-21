@@ -818,9 +818,9 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     else:
         save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
 
-# SIGNAL-LOGIK (Z-SCORE & KRAKEN ORDERBUCH)
-def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None):
-    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
+# --- VERBESSERTE SIGNAL-LOGIK (TREND-SENSITIV & STABIL) ---
+def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0):
+    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
     if hist_prices is not None and len(hist_prices) >= 3:
@@ -838,6 +838,9 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
 
     risk_off = (vix_val > 25.0) and (etf_net_flow < 0)
 
+    # Verhindert irreführende Verkaufssignale in starken Aufwärtstrends (Trend-Filter)
+    is_strong_bull_trend = (change_24h > 3.0) and (rsi_val is not None and rsi_val < 72)
+
     if risk_off and z_score < -1.2:
         return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse trotz statistischem Rücksetzer (Z-Score: {z_score:.2f}).", z_score)
 
@@ -845,10 +848,12 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
         return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) in gesundem Makro-Umfeld.", z_score)
     elif z_score <= -0.9 and macro_score >= 0 and not risk_off:
         return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) bei stabilem Makro.", z_score)
-    elif (z_score >= 1.8 or fg_value >= 75) and (macro_score < 0 or fg_value >= 80):
+    elif (z_score >= 2.2 or fg_value >= 80) and (macro_score < 0 or fg_value >= 85) and not is_strong_bull_trend:
         return ("GEWINNE SICHERN 🔴🔴", f"Starke statistische Überdehnung nach oben (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).", z_score)
-    elif z_score >= 1.0:
+    elif z_score >= 1.5 and not is_strong_bull_trend:
         return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs, deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).", z_score)
+    elif is_strong_bull_trend:
+        return ("HALTEN 🟡", f"Starker Aufwärtstrend (24h: {change_24h:+.1f}%) trotz erhöhtem Z-Score ({z_score:.2f}). Trend wird gehalten.", z_score)
     else:
         return ("HALTEN 🟡", f"Konsolidierungsphase im fairen statistischen Bereich (Z-Score: {z_score:.2f}).", z_score)
 
@@ -996,9 +1001,8 @@ if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
     else:
-        coin_results = {}
+        raw_coin_results = {}
         
-        # --- PARALLELE COIN-DATEN VERARBEITUNG MIT THREADPOOL ---
         def process_coin(coin):
             symbol = coins_map[coin]
             values = current_data.get(coin, {})
@@ -1021,7 +1025,7 @@ if current_data and len(current_data) > 0:
                 hist_prices_list = df_history["Kurs"].tolist()
                 if hist_price > 0: perf_val = ((price - hist_price) / hist_price) * 100
 
-            signal, reason, z_score = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value)
+            signal, reason, z_score = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value, change_24h=change_24h)
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
             log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
@@ -1039,9 +1043,12 @@ if current_data and len(current_data) > 0:
             for future in concurrent.futures.as_completed(future_to_coin):
                 try:
                     c_name, c_res = future.result()
-                    coin_results[c_name] = c_res
+                    raw_coin_results[c_name] = c_res
                 except Exception:
                     pass
+
+        # --- REIHENFOLGE DER COINS FIXIEREN (ENTSPRECHEND DER AUSWAHL) ---
+        coin_results = {c: raw_coin_results[c] for c in ausgewaehlte_coins if c in raw_coin_results}
 
         portfolio_weights = {}
         for coin, res in coin_results.items():
@@ -1145,8 +1152,7 @@ if current_data and len(current_data) > 0:
                 with st.expander("🔍 **Details, Analyse & Signal-Zusammensetzung**", expanded=False):
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
-                    # Visueller Z-Score Indikator Badge
-                    z_color = "#2ecc71" if z_score <= -0.9 else ("#e74c3c" if z_score >= 1.0 else "#3498db")
+                    z_color = "#2ecc71" if z_score <= -0.9 else ("#e74c3c" if z_score >= 1.5 else "#3498db")
                     st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;'>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
                     
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
@@ -1274,7 +1280,7 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("---")
     st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
     st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
-    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
+    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzustichern.")
 
     st.markdown("---")
     st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
