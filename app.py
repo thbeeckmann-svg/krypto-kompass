@@ -591,7 +591,6 @@ def evaluate_learning_data(df_archive, current_data):
         
         time_diff_hours = (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() / 3600.0
         
-        # Zeitraumbewusste Reifezeit für das Selbstlernmodul
         target_horizon_str = str(row.get("Target_Horizon", "7 Tage"))
         required_hours = parse_horizon_to_hours(target_horizon_str)
         
@@ -1293,7 +1292,7 @@ with st.container(border=True):
         oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
         copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
         vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
-        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#2ecc71"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
         etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(f"""
