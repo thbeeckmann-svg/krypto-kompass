@@ -917,7 +917,8 @@ with col_btn:
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# --- EINSTELLUNGEN WIEDER DIREKT OFFEN & SICHTBAR ---
+# --- DIREKTE EINSTELLUNGEN (KEIN EXPANDER HIER) ---
+st.markdown("### ⚙️ Einstellungen & Investitions-Planung")
 col_e1, col_e2 = st.columns(2)
 with col_e1:
     zeitraum_wahl = st.selectbox("Rückblick- & Vergleichszeitraum wählen:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr", "2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"], index=1)
