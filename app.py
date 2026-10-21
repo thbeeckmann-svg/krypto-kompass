@@ -838,7 +838,7 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     else:
         save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
 
-# --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK ---
+# --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK (inkl. Crash-Erholung für Cardano & Co.) ---
 def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0, perf_val=0.0):
     total_weighted_score = get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
@@ -919,19 +919,17 @@ with col_btn:
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# --- FIX: COIN-AUSWAHL GANZ OBEN IM HAUPTBEREICH (STANDARDMÄSSIG ALLE AKTIV) ---
-coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
-ausgewaehlte_coins = st.multiselect("Kryptowährungen anzeigen:", options=list(coins_map.keys()), default=list(coins_map.keys()))
-
 # EINSTELLUNGEN & INVESTITIONS-PLANUNG
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     with col_e1:
-        zeitraum_wahl = st.selectbox("Rückblick- & Vergleichszeitraum wählen:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr", "2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"], index=1)
+        zeitraum_wahl = st.selectbox("Rückblick- & Vergleichszeitraum wählen:", ["24 Stunden", "7 Tage", "30 Tage", "90 Tage", "6 Monate", "1 Jahr", "2 Jahre", "3 Jahre", "5 Jahre (Zyklus)"], index=5)
         investment_wahl = st.selectbox("Geplantes Ordervolumen (Tranche):", [100, 500, 1000, 2500, 5000, "Individuell"], index=1)
         geplantes_budget = st.number_input("Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0) if investment_wahl == "Individuell" else float(investment_wahl)
 
     with col_e2:
+        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+        ausgewaehlte_coins = st.multiselect("Kryptowährungen anzeigen:", options=list(coins_map.keys()), default=list(coins_map.keys()))
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
     st.write("---")
@@ -1031,7 +1029,7 @@ log_market_data(fg_value, fg_text, bond_val, bond_change, nikkei_val, nikkei_chg
 
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
-        st.warning("👈 Bitte wähle oben mindestens eine Kryptowährung aus.")
+        st.warning("👈 Bitte wähle im Einstellungs-Menü oben mindestens eine Kryptowährung aus.")
     else:
         raw_coin_results = {}
         
