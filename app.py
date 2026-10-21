@@ -840,7 +840,7 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
 
 # --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK ---
 def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0, perf_val=0.0):
-    total_weighted_score = get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
+    total_weighted_score = get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
     if hist_prices is not None and len(hist_prices) >= 3:
@@ -860,13 +860,19 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     if risk_off and z_score < -1.2:
         return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse (Z-Score: {z_score:.2f}).", z_score)
 
-    # Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen im gewählten Zeitraum
+    # 1. Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen
     if perf_val >= 25.0 or (perf_val >= 15.0 and fg_value >= 75):
         return ("GEWINNE SICHERN 🔴🔴", f"Starker historischer Gewinn im gewählten Zeitraum ({perf_val:+.2f}%) bei hoher Markt-Gier (Fear & Greed: {fg_value}). Zeit für Teilverkäufe.", z_score)
     elif perf_val >= 12.0:
         return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Anstieg von {perf_val:+.2f}% im Rückblick-Zeitraum. Teilgewinne realisieren.", z_score)
 
-    # Kauf-Signale bei Rücksetzern
+    # 2. NEU: Antizyklische Kauf-Chance bei massiven historischen Einbrüchen (z.B. -40% bis -70% wie bei Cardano)
+    if perf_val <= -40.0 and total_weighted_score >= -25 and not risk_off:
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Massiver historischer Rabatt im gewählten Zeitraum ({perf_val:+.2f}%) mit Bodenbildungs-Ansatz. Antizyklische Kaufchance.", z_score)
+    elif perf_val <= -25.0 and total_weighted_score >= -20 and not risk_off:
+        return ("KAUFEN 🟢", f"Deutlicher Rücksetzer im Rückblick ({perf_val:+.2f}%) bei stabilem Makro-Umfeld.", z_score)
+
+    # Klassische Z-Score Kauf-Signale
     if z_score <= -1.8 and total_weighted_score >= -10 and (rsi_val is None or rsi_val <= 33) and not risk_off:
         return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) bei positivem Gesamt-Score ({total_weighted_score:.1f}).", z_score)
     elif z_score <= -0.9 and total_weighted_score >= -20 and not risk_off:
