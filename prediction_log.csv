@@ -68,3 +68,4 @@ Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle,Target_Horizon
 2026-10-21 22:09:49,Solana,96.2300033569336,HALTEN,63.0,24 Stunden,Binance Spot REST API
 2026-10-21 22:09:49,Bitcoin,75209.28125,HALTEN,63.0,24 Stunden,Binance Spot REST API
 2026-10-21 22:09:57,Cardano,0.2030500024557113,GEWINNE,63.0,90 Tage,Binance Spot REST API
+2026-10-21 22:11:02,Solana,96.33000183105467,GEWINNE,63.0,90 Tage,Binance Spot REST API
