@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import os
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
+import concurrent.futures
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -33,7 +34,6 @@ CRYPTO_LOGOS = {
 
 LOG_FILE = "prediction_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
-
 
 # --- DEUTSCHE ZAHLENFORMATIERUNG ---
 def format_ger(value, decimals=2, force_sign=False):
@@ -823,30 +823,34 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
-    if hist_prices is not None and len(hist_prices) >= 5:
+    if hist_prices is not None and len(hist_prices) >= 3:
         series = pd.Series(hist_prices)
-        window_size = max(3, min(15, len(series) - 1))
+        window_size = max(2, min(15, len(series)))
         ma = series.rolling(window=window_size).mean().iloc[-1]
         std = series.rolling(window=window_size).std().iloc[-1]
-        z_score = (price - ma) / std if std and std > 0 else 0.0
+        
+        if pd.isna(std) or std == 0:
+            std = series.std()
+            
+        z_score = (price - ma) / std if std and not pd.isna(std) and std > 0 else 0.0
     else:
         z_score = 0.0
 
     risk_off = (vix_val > 25.0) and (etf_net_flow < 0)
 
     if risk_off and z_score < -1.2:
-        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse trotz statistischem Rücksetzer (Z-Score: {z_score:.2f}).")
+        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse trotz statistischem Rücksetzer (Z-Score: {z_score:.2f}).", z_score)
 
     if z_score <= -1.8 and macro_score >= 0 and (rsi_val is None or rsi_val <= 33) and not risk_off:
-        return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) in gesundem Makro-Umfeld.")
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) in gesundem Makro-Umfeld.", z_score)
     elif z_score <= -0.9 and macro_score >= 0 and not risk_off:
-        return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) bei stabilem Makro.")
+        return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) bei stabilem Makro.", z_score)
     elif (z_score >= 1.8 or fg_value >= 75) and (macro_score < 0 or fg_value >= 80):
-        return ("GEWINNE SICHERN 🔴🔴", f"Starke statistische Überdehnung nach oben (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).")
+        return ("GEWINNE SICHERN 🔴🔴", f"Starke statistische Überdehnung nach oben (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).", z_score)
     elif z_score >= 1.0:
-        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs, deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).")
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs, deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).", z_score)
     else:
-        return ("HALTEN 🟡", f"Konsolidierungsphase im fairen statistischen Bereich (Z-Score: {z_score:.2f}).")
+        return ("HALTEN 🟡", f"Konsolidierungsphase im fairen statistischen Bereich (Z-Score: {z_score:.2f}).", z_score)
 
 # --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
@@ -931,7 +935,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
             df_hist_view["Datum"] = pd.to_datetime(df_hist_view["Datum"], errors="coerce")
             df_hist_view = df_hist_view.sort_values(by="Datum", ascending=False)
             
-            # Tägliche Zusammenfassung aggregieren
             df_hist_view["Tag"] = df_hist_view["Datum"].dt.strftime("%Y-%m-%d")
             daily_summary = df_hist_view.groupby("Tag").agg(
                 Anzahl_Signale=("Coin", "count"),
@@ -968,8 +971,10 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 
 if auto_refresh_aktiv: st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
 
-if zeitraum_wahl == "24 Stunden": limit_anzahl, interval, wöchentlich = 24, "1h", False
-elif zeitraum_wahl == "7 Tage": limit_anzahl, interval, wöchentlich = 168, "1h", False
+if zeitraum_wahl == "24 Stunden": 
+    limit_anzahl, interval, wöchentlich = 24, "1h", False
+elif zeitraum_wahl == "7 Tage": 
+    limit_anzahl, interval, wöchentlich = 30, "1d", False
 elif zeitraum_wahl == "30 Tage": limit_anzahl, interval, wöchentlich = 30, "1d", False
 elif zeitraum_wahl == "90 Tage": limit_anzahl, interval, wöchentlich = 90, "1d", True
 elif zeitraum_wahl == "6 Monate": limit_anzahl, interval, wöchentlich = 180, "1d", True
@@ -992,7 +997,9 @@ if current_data and len(current_data) > 0:
         st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
     else:
         coin_results = {}
-        for coin in ausgewaehlte_coins:
+        
+        # --- PARALLELE COIN-DATEN VERARBEITUNG MIT THREADPOOL ---
+        def process_coin(coin):
             symbol = coins_map[coin]
             values = current_data.get(coin, {})
             price = values.get("eur", 0)
@@ -1014,17 +1021,27 @@ if current_data and len(current_data) > 0:
                 hist_prices_list = df_history["Kurs"].tolist()
                 if hist_price > 0: perf_val = ((price - hist_price) / hist_price) * 100
 
-            signal, reason = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value)
+            signal, reason, z_score = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value)
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
             log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
 
-            coin_results[coin] = {
+            return coin, {
                 "symbol": symbol, "price": price, "change_24h": change_24h, "volume": volume,
                 "atr_value": atr_value, "rsi_value": rsi_value, "kraken_pressure": kraken_pressure,
                 "stop_loss": stop_loss, "take_profit": take_profit, "df_history": df_history,
-                "perf_val": perf_val, "hist_price": hist_price, "signal": signal, "reason": reason, "whale_msg": whale_msg
+                "perf_val": perf_val, "hist_price": hist_price, "signal": signal, "reason": reason, 
+                "z_score": z_score, "whale_msg": whale_msg
             }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_coin = {executor.submit(process_coin, coin): coin for coin in ausgewaehlte_coins}
+            for future in concurrent.futures.as_completed(future_to_coin):
+                try:
+                    c_name, c_res = future.result()
+                    coin_results[c_name] = c_res
+                except Exception:
+                    pass
 
         portfolio_weights = {}
         for coin, res in coin_results.items():
@@ -1062,7 +1079,7 @@ if current_data and len(current_data) > 0:
         st.markdown("### 🪙 Einzelne Kryptowährungen")
 
         for coin, res in coin_results.items():
-            price, change_24h, volume, atr_value, rsi_value, kraken_pressure, stop_loss, take_profit, perf_val, hist_price, df_history, signal, reason, whale_msg, investition_eur, investition_pct = res["price"], res["change_24h"], res["volume"], res["atr_value"], res["rsi_value"], res["kraken_pressure"], res["stop_loss"], res["take_profit"], res["perf_val"], res["hist_price"], res["df_history"], res["signal"], res["reason"], res["whale_msg"], res["investition_eur"], res["investition_pct"]
+            price, change_24h, volume, atr_value, rsi_value, kraken_pressure, stop_loss, take_profit, perf_val, hist_price, df_history, signal, reason, z_score, whale_msg, investition_eur, investition_pct = res["price"], res["change_24h"], res["volume"], res["atr_value"], res["rsi_value"], res["kraken_pressure"], res["stop_loss"], res["take_profit"], res["perf_val"], res["hist_price"], res["df_history"], res["signal"], res["reason"], res["z_score"], res["whale_msg"], res["investition_eur"], res["investition_pct"]
 
             coin_menge = investition_eur / price if price > 0 else 0.0
             logo_url, symbol = CRYPTO_LOGOS.get(coin, ""), CRYPTO_SYMBOLS.get(coin, "")
@@ -1127,6 +1144,11 @@ if current_data and len(current_data) > 0:
                 # --- WEITERE DETAILS IM EXPANDER ---
                 with st.expander("🔍 **Details, Analyse & Signal-Zusammensetzung**", expanded=False):
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
+                    
+                    # Visueller Z-Score Indikator Badge
+                    z_color = "#2ecc71" if z_score <= -0.9 else ("#e74c3c" if z_score >= 1.0 else "#3498db")
+                    st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;'>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
+                    
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
                     
                     st.write("---")
