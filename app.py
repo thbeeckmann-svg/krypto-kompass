@@ -586,27 +586,48 @@ def evaluate_learning_data(df_archive, current_data):
 
 def generate_local_self_learning_optimizations(df_archive, current_data):
     default_weights = {
-        "Trend & Momentum": 15.0, "ETF Net Flows": 15.0, "Makro (Zins/Aktien/Währung/VIX)": 15.0,
-        "Fear & Greed Index": 15.0, "Kraken Orderbuch-Druck": 15.0, "RSI & Volatilität": 10.0,
-        "Nachrichten & Zins-Sentiment": 10.0, "Krypto-Liquidität & DeFi TVL": 5.0,
+        "Trend & Momentum": 15.0, 
+        "ETF Net Flows": 15.0, 
+        "Makro (Zins/Aktien/Währung/VIX)": 15.0,
+        "Fear & Greed Index": 15.0, 
+        "Kraken Orderbuch-Druck": 15.0, 
+        "RSI & Volatilität": 10.0,
+        "Nachrichten & Zins-Sentiment": 10.0, 
+        "Krypto-Liquidität & DeFi TVL": 5.0,
     }
 
     if df_archive is None or df_archive.empty or not current_data:
         return default_weights
 
     stats = evaluate_learning_data(df_archive, current_data)
+    total_checked = stats["total_checked"]
+    
+    # Bereits ab 5 ausgewerteten Signalen im Log greift das Self-Tuning dynamisch
+    if total_checked < 5:
+        return default_weights
+
     buy_signals = stats["buy_wins"] + stats["buy_fails"]
     sell_signals = stats["sell_wins"] + stats["sell_fails"]
+    
+    buy_win_rate = (stats["buy_wins"] / buy_signals) if buy_signals > 0 else 0.75
+    sell_win_rate = (stats["sell_wins"] / sell_signals) if sell_signals > 0 else 0.75
 
     weights = default_weights.copy()
-    if buy_signals > 0 and (stats["buy_fails"] / buy_signals) > 0.3:
-        weights["Trend & Momentum"] -= 2.0
-        weights["Makro (Zins/Aktien/Währung/VIX)"] += 2.0
-        weights["Nachrichten & Zins-Sentiment"] += 1.0
-    if sell_signals > 0 and (stats["sell_fails"] / sell_signals) > 0.3:
-        weights["Kraken Orderbuch-Druck"] += 2.0
-        weights["RSI & Volatilität"] += 1.0
-        weights["Trend & Momentum"] -= 3.0
+    performance_factor = (buy_win_rate - 0.75) + (sell_win_rate - 0.75)
+
+    if performance_factor < 0:
+        weights["Trend & Momentum"] = max(5.0, default_weights["Trend & Momentum"] - 4.0)
+        weights["Kraken Orderbuch-Druck"] = min(25.0, default_weights["Kraken Orderbuch-Druck"] + 3.0)
+        weights["Makro (Zins/Aktien/Währung/VIX)"] = min(25.0, default_weights["Makro (Zins/Aktien/Währung/VIX)"] + 3.0)
+    elif performance_factor > 0:
+        weights["Trend & Momentum"] = min(25.0, default_weights["Trend & Momentum"] + 3.0)
+        weights["ETF Net Flows"] = min(25.0, default_weights["ETF Net Flows"] + 2.0)
+        weights["Fear & Greed Index"] = max(5.0, default_weights["Fear & Greed Index"] - 2.0)
+
+    # Exakte Normierung auf 100,0 %
+    total_w = sum(weights.values())
+    for k in weights:
+        weights[k] = round((weights[k] / total_w) * 100.0, 1)
 
     return weights
 
@@ -837,8 +858,6 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
         z_score = 0.0
 
     risk_off = (vix_val > 25.0) and (etf_net_flow < 0)
-
-    # Verhindert irreführende Verkaufssignale in starken Aufwärtstrends (Trend-Filter)
     is_strong_bull_trend = (change_24h > 3.0) and (rsi_val is not None and rsi_val < 72)
 
     if risk_off and z_score < -1.2:
@@ -1047,7 +1066,7 @@ if current_data and len(current_data) > 0:
                 except Exception:
                     pass
 
-        # --- REIHENFOLGE DER COINS FIXIEREN (ENTSPRECHEND DER AUSWAHL) ---
+        # FIXIERTE REIHENFOLGE DER COINS
         coin_results = {c: raw_coin_results[c] for c in ausgewaehlte_coins if c in raw_coin_results}
 
         portfolio_weights = {}
@@ -1108,7 +1127,6 @@ if current_data and len(current_data) > 0:
                 col_s1.markdown(f"**Signal:** {signal}")
                 col_s2.markdown(f"**Tranche:** **{format_ger(investition_eur, 2)} €** ({format_ger(investition_pct, 1)}%)")
 
-                # --- DIAGRAMM & RÜCKBLICK DIREKT ANZEIGEN ---
                 st.write("---")
                 if hist_price > 0: 
                     st.markdown(f"📈 **Rückblick ({zeitraum_wahl}):** Start: **{format_ger(hist_price, dec)} €** | Aktuell: **{format_ger(price, dec)} €**")
@@ -1148,7 +1166,6 @@ if current_data and len(current_data) > 0:
                     tooltip_time_format = "%d.%m.%Y %H:%M" if zeitraum_wahl != "24 Stunden" else "%H:%M Uhr"
                     st.altair_chart((chart_layers + base.mark_point(size=45, color=chart_color, filled=True).encode(tooltip=[alt.Tooltip("Timestamp:T", title="Zeit", format=tooltip_time_format), alt.Tooltip("Kurs:Q", title="Kurs", format=tooltip_format)])).interactive(), use_container_width=True)
 
-                # --- WEITERE DETAILS IM EXPANDER ---
                 with st.expander("🔍 **Details, Analyse & Signal-Zusammensetzung**", expanded=False):
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
@@ -1280,7 +1297,7 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("---")
     st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
     st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
-    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzustichern.")
+    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
 
     st.markdown("---")
     st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
