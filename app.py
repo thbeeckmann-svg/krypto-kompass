@@ -968,7 +968,7 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 if auto_refresh_aktiv: st_autorefresh(interval=5 * 60 * 1000, key="datarefresh")
 
 if zeitraum_wahl == "24 Stunden": limit_anzahl, interval, wöchentlich = 24, "1h", False
-elif zeitraum_wahl == "7 Tage": limit_anzahl, interval, wöchentlich = 7, "1d", False
+elif zeitraum_wahl == "7 Tage": limit_anzahl, interval, wöchentlich = 168, "1h", False
 elif zeitraum_wahl == "30 Tage": limit_anzahl, interval, wöchentlich = 30, "1d", False
 elif zeitraum_wahl == "90 Tage": limit_anzahl, interval, wöchentlich = 90, "1d", True
 elif zeitraum_wahl == "6 Monate": limit_anzahl, interval, wöchentlich = 180, "1d", True
@@ -1246,4 +1246,18 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("- **KAUFEN (🟢):** Moderater Rücksetzer unter den gleitenden Durchschnitt bei stabilen Rahmenbedingungen.")
     st.markdown("- **HALTEN (🟡):** Seitwärtsphase oder unentschlossener Markt. Keine übereilten Aktionen.")
     st.markdown("- **TEILVERKAUF / VORSICHT (🔴):** Erste Anzeichen von Überhitzung oder steigendem Verkaufsdruck. Gewinne absichern.")
-    st.markdown("- **GE
+    st.markdown("- **GEWINNE SICHERN (🔴🔴):** Extrem hohe Bewertung (Z-Score > 1.8 oder extremer Gier-Index). Kapital schützen.")
+
+    st.markdown("---")
+    st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
+    st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
+    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
+
+    st.markdown("---")
+    st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
+    st.markdown("- **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.")
+    st.markdown("- **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.")
+    st.markdown("- **Kraken Orderbuch-Druck:** Zeigt das Verhältnis von Kauf- (Bids) zu Verkaufsorders (Asks) direkt im Kraken-Orderbuch. Positive Werte signalisieren akuten Käuferdruck.")
+
+st.markdown("---")
+st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
