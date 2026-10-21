@@ -34,6 +34,7 @@ CRYPTO_LOGOS = {
 LOG_FILE = "prediction_log.csv"
 MARKET_LOG_FILE = "market_data_log.csv"
 
+
 # --- DEUTSCHE ZAHLENFORMATIERUNG ---
 def format_ger(value, decimals=2, force_sign=False):
     if value is None or pd.isna(value):
