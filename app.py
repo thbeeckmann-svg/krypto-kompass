@@ -602,7 +602,6 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
     stats = evaluate_learning_data(df_archive, current_data)
     total_checked = stats["total_checked"]
     
-    # Bereits ab 5 ausgewerteten Signalen im Log greift das Self-Tuning dynamisch
     if total_checked < 5:
         return default_weights
 
@@ -624,7 +623,6 @@ def generate_local_self_learning_optimizations(df_archive, current_data):
         weights["ETF Net Flows"] = min(25.0, default_weights["ETF Net Flows"] + 2.0)
         weights["Fear & Greed Index"] = max(5.0, default_weights["Fear & Greed Index"] - 2.0)
 
-    # Exakte Normierung auf 100,0 %
     total_w = sum(weights.values())
     for k in weights:
         weights[k] = round((weights[k] / total_w) * 100.0, 1)
@@ -719,18 +717,19 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
         f"DeFi TVL & Liq. ({w_liq:.0f}%)": liq_score,
     }
 
-def get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=0.0, rsi_val=None, weights=None):
-    scores = calculate_detailed_factor_scores(change_24h, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
+def get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=0.0, rsi_val=None, weights=None):
+    scores = calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     total = 0.0
     for key, score_val in scores.items():
         base_key = key.split(" (")[0].strip()
-        matched_w = 0.0
-        for wk, wv in weights.items():
-            if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()) or ("trend" in wk.lower() and "trend" in base_key.lower()) or ("kraken" in wk.lower() and "kraken" in base_key.lower()):
-                matched_w = wv
-                break
+        matched_w = 15.0
+        if weights:
+            for wk, wv in weights.items():
+                if wk.lower() in base_key.lower() or base_key.lower() in wk.lower() or ("etf" in wk.lower() and "etf" in base_key.lower()) or ("trend" in wk.lower() and "trend" in base_key.lower()) or ("kraken" in wk.lower() and "kraken" in base_key.lower()):
+                    matched_w = wv
+                    break
         total += score_val * (matched_w / 100.0)
-    return 1 if total > 20 else (-1 if total < -20 else 0)
+    return total
 
 @st.cache_data(ttl=60)
 def get_historical_data(symbol, limit_anzahl, interval, weekly=False):
@@ -839,9 +838,9 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     else:
         save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
 
-# --- VERBESSERTE SIGNAL-LOGIK (TREND-SENSITIV & STABIL) ---
-def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0):
-    macro_score = get_automatic_macro_score(volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
+# --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK ---
+def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0, perf_val=0.0):
+    total_weighted_score = get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
     if hist_prices is not None and len(hist_prices) >= 3:
@@ -849,32 +848,39 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
         window_size = max(2, min(15, len(series)))
         ma = series.rolling(window=window_size).mean().iloc[-1]
         std = series.rolling(window=window_size).std().iloc[-1]
-        
         if pd.isna(std) or std == 0:
             std = series.std()
-            
         z_score = (price - ma) / std if std and not pd.isna(std) and std > 0 else 0.0
     else:
         z_score = 0.0
 
     risk_off = (vix_val > 25.0) and (etf_net_flow < 0)
-    is_strong_bull_trend = (change_24h > 3.0) and (rsi_val is not None and rsi_val < 72)
+    is_flat_market = abs(perf_val) < 2.0 and abs(change_24h) < 2.5
 
     if risk_off and z_score < -1.2:
-        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse trotz statistischem Rücksetzer (Z-Score: {z_score:.2f}).", z_score)
+        return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse (Z-Score: {z_score:.2f}).", z_score)
 
-    if z_score <= -1.8 and macro_score >= 0 and (rsi_val is None or rsi_val <= 33) and not risk_off:
-        return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) in gesundem Makro-Umfeld.", z_score)
-    elif z_score <= -0.9 and macro_score >= 0 and not risk_off:
-        return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) bei stabilem Makro.", z_score)
-    elif (z_score >= 2.2 or fg_value >= 80) and (macro_score < 0 or fg_value >= 85) and not is_strong_bull_trend:
-        return ("GEWINNE SICHERN 🔴🔴", f"Starke statistische Überdehnung nach oben (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).", z_score)
-    elif z_score >= 1.5 and not is_strong_bull_trend:
-        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Zuwachs, deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).", z_score)
-    elif is_strong_bull_trend:
-        return ("HALTEN 🟡", f"Starker Aufwärtstrend (24h: {change_24h:+.1f}%) trotz erhöhtem Z-Score ({z_score:.2f}). Trend wird gehalten.", z_score)
+    # Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen im gewählten Zeitraum
+    if perf_val >= 25.0 or (perf_val >= 15.0 and fg_value >= 75):
+        return ("GEWINNE SICHERN 🔴🔴", f"Starker historischer Gewinn im gewählten Zeitraum ({perf_val:+.2f}%) bei hoher Markt-Gier (Fear & Greed: {fg_value}). Zeit für Teilverkäufe.", z_score)
+    elif perf_val >= 12.0:
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Anstieg von {perf_val:+.2f}% im Rückblick-Zeitraum. Teilgewinne realisieren.", z_score)
+
+    # Kauf-Signale bei Rücksetzern
+    if z_score <= -1.8 and total_weighted_score >= -10 and (rsi_val is None or rsi_val <= 33) and not risk_off:
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) bei positivem Gesamt-Score ({total_weighted_score:.1f}).", z_score)
+    elif z_score <= -0.9 and total_weighted_score >= -20 and not risk_off:
+        return ("KAUFEN 🟢", f"Moderat unter dem gleitenden Durchschnitt (Z-Score: {z_score:.2f}) im stabilen Marktumfeld.", z_score)
+    
+    if is_flat_market and not (z_score >= 2.5 and fg_value >= 80):
+        return ("HALTEN 🟡", f"Seitwärtsphase/Konsolidierung im gewählten Zeitraum ({perf_val:+.2f}%). Keine Aktion erforderlich.", z_score)
+
+    if (z_score >= 2.0 or fg_value >= 82) and (total_weighted_score < -15 or fg_value >= 85):
+        return ("GEWINNE SICHERN 🔴🔴", f"Starke Überdehnung (Z-Score: {z_score:.2f}, Fear & Greed: {fg_value}).", z_score)
+    elif z_score >= 1.6 and total_weighted_score < -5:
+        return ("VORSICHT / TEILVERKAUF 🔴", f"Deutlicher Aufschlag zum Mittelwert (Z-Score: {z_score:.2f}).", z_score)
     else:
-        return ("HALTEN 🟡", f"Konsolidierungsphase im fairen statistischen Bereich (Z-Score: {z_score:.2f}).", z_score)
+        return ("HALTEN 🟡", f"Gesunder Trend im fairen Bereich (Gewichteter Score: {total_weighted_score:.1f}, Z-Score: {z_score:.2f}).", z_score)
 
 # --- LIVE-DATEN ABRUFEN ---
 current_data = get_current_data()
@@ -922,7 +928,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
 
     st.write("---")
     
-    # --- EIGENES AUFKLAPPBARES FENSTER FÜR QUANT-STATISTIK & HISTORIE ---
     with st.expander("📊 **Quant Self-Tuning, Treffer-Statistik & Historie**", expanded=False):
         stats = evaluate_learning_data(df_archive_check, current_data)
         buy_signals = stats["buy_wins"] + stats["buy_fails"]
@@ -1044,7 +1049,7 @@ if current_data and len(current_data) > 0:
                 hist_prices_list = df_history["Kurs"].tolist()
                 if hist_price > 0: perf_val = ((price - hist_price) / hist_price) * 100
 
-            signal, reason, z_score = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value, change_24h=change_24h)
+            signal, reason, z_score = generate_signal(price, hist_prices_list, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, real_etf_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum_wahl, active_weights, rsi_val=rsi_value, change_24h=change_24h, perf_val=perf_val)
             whale_msg, _ = analyze_whale_activity(volume, change_24h)
 
             log_prediction(coin, price, signal, fg_value, target_horizon=zeitraum_wahl)
