@@ -1020,7 +1020,8 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
             st.dataframe(daily_summary, use_container_width=True, hide_index=True)
 
             st.markdown("##### 🔍 Detailliertes Signal-Logbuch (`prediction_log.csv`)")
-            st.dataframe(df_hist_view[["Datum", "Coin", "Kurs_Damals", "Signal", "FearGreed", "Target_Horizon"]], use_container_width=True, hide_index=True)
+            df_display = df_hist_view[["Datum", "Coin", "Kurs_Damals", "Signal", "FearGreed", "Target_Horizon"]].rename(columns={"Target_Horizon": "Auswertungs-Zeitraum"})
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.info("Noch keine historischen Signale im Log vorhanden.")
 
