@@ -822,11 +822,12 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     macro_score = get_automatic_macro_score(volume, fg_value, bond_change, 0.0, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
 
-    if hist_prices is not None and len(hist_prices) >= 10:
+    if hist_prices is not None and len(hist_prices) >= 5:
         series = pd.Series(hist_prices)
-        ma = series.rolling(window=min(15, len(series))).mean().iloc[-1]
-        std = series.rolling(window=min(15, len(series))).std().iloc[-1]
-        z_score = (price - ma) / std if std > 0 else 0.0
+        window_size = max(3, min(15, len(series) - 1))
+        ma = series.rolling(window=window_size).mean().iloc[-1]
+        std = series.rolling(window=window_size).std().iloc[-1]
+        z_score = (price - ma) / std if std and std > 0 else 0.0
     else:
         z_score = 0.0
 
@@ -1245,18 +1246,4 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("- **KAUFEN (🟢):** Moderater Rücksetzer unter den gleitenden Durchschnitt bei stabilen Rahmenbedingungen.")
     st.markdown("- **HALTEN (🟡):** Seitwärtsphase oder unentschlossener Markt. Keine übereilten Aktionen.")
     st.markdown("- **TEILVERKAUF / VORSICHT (🔴):** Erste Anzeichen von Überhitzung oder steigendem Verkaufsdruck. Gewinne absichern.")
-    st.markdown("- **GEWINNE SICHERN (🔴🔴):** Extrem hohe Bewertung (Z-Score > 1.8 oder extremer Gier-Index). Kapital schützen.")
-
-    st.markdown("---")
-    st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
-    st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
-    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
-
-    st.markdown("---")
-    st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
-    st.markdown("- **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.")
-    st.markdown("- **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.")
-    st.markdown("- **Kraken Orderbuch-Druck:** Zeigt das Verhältnis von Kauf- (Bids) zu Verkaufsorders (Asks) direkt im Kraken-Orderbuch. Positive Werte signalisieren akuten Käuferdruck.")
-
-st.markdown("---")
-st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
+    st.markdown("- **GE
