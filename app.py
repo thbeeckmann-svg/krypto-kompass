@@ -642,11 +642,12 @@ def calculate_detailed_factor_scores(perf_val, volume, fg_value, bond_change, as
             "Krypto-Liquidität & DeFi TVL": 5.0
         }
 
-    if perf_val <= -7.5: trend_score = 80
+    if perf_val <= -25.0: trend_score = 90
+    elif perf_val <= -12.0: trend_score = 65
     elif perf_val <= -3.0: trend_score = 40
     elif perf_val >= 7.5: trend_score = -80
     elif perf_val >= 3.5: trend_score = -40
-    else: trend_score = 5 if perf_val <= 0 else -5
+    else: trend_score = 15 if perf_val <= 0 else -5
 
     sentiment_score = 90 if fg_value <= 25 else -90 if fg_value >= 75 else (50 - fg_value) * 1.5
 
@@ -838,7 +839,7 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     else:
         save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
 
-# --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK ---
+# --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK MIT CRASH-ERHOLUNGS-KAUFLOGIK ---
 def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0, perf_val=0.0):
     total_weighted_score = get_automatic_weighted_score(perf_val, volume, fg_value, bond_change, change_24h, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure=kraken_pressure, rsi_val=rsi_val, weights=weights)
     vix_val = vix_data.get("vix_val", 18.0)
@@ -860,7 +861,13 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     if risk_off and z_score < -1.2:
         return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse (Z-Score: {z_score:.2f}).", z_score)
 
-    # Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen im gewählten Zeitraum
+    # NEU: Crash-Erholungs-Kauflogik für massive Minus-Werte im Rückblick-Zeitraum (z.B. 1 Jahr)
+    if perf_val <= -30.0 and z_score >= -0.5:
+        return ("STARKE KAUFCHANCE 🟢🟢", f"Historisch starker Crash-Rücksetzer ({perf_val:+.2f}%) mit stabiler Bodenbildung / Erholung (Z-Score: {z_score:.2f}). Exzellenter langfristiger Einstieg.", z_score)
+    elif perf_val <= -15.0 and z_score >= -0.8:
+        return ("KAUFEN 🟢", f"Tief im Minus im Rückblick-Zeitraum ({perf_val:+.2f}%), zeigt aber Anzeichen einer Erholung.", z_score)
+
+    # Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen
     if perf_val >= 25.0 or (perf_val >= 15.0 and fg_value >= 75):
         return ("GEWINNE SICHERN 🔴🔴", f"Starker historischer Gewinn im gewählten Zeitraum ({perf_val:+.2f}%) bei hoher Markt-Gier (Fear & Greed: {fg_value}). Zeit für Teilverkäufe.", z_score)
     elif perf_val >= 12.0:
