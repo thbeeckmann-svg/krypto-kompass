@@ -958,7 +958,7 @@ with col_btn:
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
-# EINSTELLUNGEN & INVESTITIONS-PLANUNG
+# EINSTELLUNGEN & INVESTITIONS-PLANUNG (Standardmäßig geschlossen: expanded=False)
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
     with col_e1:
@@ -1273,7 +1273,7 @@ else:
 
 st.write("---")
 
-# GLOBALER MARKT & MAKRO-ÜBERSICHT
+# GLOBALER MARKT & MAKRO-ÜBERSICHT (Standardmäßig geschlossen: expanded=False)
 bar_color = "#e74c3c" if fg_value > 70 else ("#f39c12" if fg_value >= 45 else "#2ecc71")
 signal_icon = "🔴" if fg_value > 70 else ("🟡" if fg_value >= 45 else "🟢")
 
@@ -1325,10 +1325,8 @@ with st.container(border=True):
             sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
             st.write(f"🌏 **Nikkei 225:** {format_ger(n_val, 0)} ({format_ger(n_chg, 2, True)}%) | **Hang Seng:** {format_ger(h_val, 0)} ({format_ger(h_chg, 2, True)}%) | **Shanghai Comp:** {format_ger(sse_v, 0)} ({format_ger(sse_c, 2, True)}%)")
 
-# --- NACHRICHTEN & ZINS-SENTIMENT PORTAL ---
-st.write("")
-with st.container(border=True):
-    st.markdown(f"📰 **Krypto-Nachrichten & Zins-Sentiment:** **{news_score:+d} / 100**")
+# --- NACHRICHTEN & ZINS-SENTIMENT PORTAL (Als Aufklapp-Fenster: expanded=False) ---
+with st.expander(f"📰 **Krypto-Nachrichten & Zins-Sentiment ({news_score:+d} / 100)**", expanded=False):
     st.caption("Echtzeit-Schlagzeilen & Markt-Pulse:")
     if top_headlines:
         for title, link in top_headlines:
@@ -1336,10 +1334,9 @@ with st.container(border=True):
     else:
         st.info("Aktuell keine Schlagzeilen verfügbar.")
 
-# --- KRYPTO-AKADEMIE & LERNPFAD ---
-st.write("")
-with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True):
-    st.markdown("Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie du die Live-Daten, Indikatoren und Signale dieses Dashboards optimal für deine Investment-Entscheidungen nutzt.")
+# --- KRYPTO-AKADEMIE & LERNPFAD (Erweitert um Selbstlern-Code & Signal-Analyse, expanded=False) ---
+with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=False):
+    st.markdown("Willkommen in der **Krypto-Akademie**! Hier lernst du Schritt für Schritt, wie die Algorithmen, Indikatoren und das Selbstlern-Modul dieses Dashboards arbeiten.")
     
     st.markdown("---")
     st.markdown("### 📚 Modul 1: Grundlagen & Signale verstehen")
@@ -1349,16 +1346,31 @@ with st.expander("🎓 **Krypto-Akademie & Einsteiger-Lernpfad**", expanded=True
     st.markdown("- **TEILVERKAUF / VORSICHT (🔴):** Erste Anzeichen von Überhitzung oder steigendem Verkaufsdruck. Gewinne absichern.")
     st.markdown("- **GEWINNE SICHERN (🔴🔴):** Extrem hohe Bewertung (Z-Score > 1.8 oder extremer Gier-Index). Kapital schützen.")
 
+    namespaces = ("---",)
     st.markdown("---")
-    st.markdown("### 🛡️ Modul 2: Risikomanagement & ATR")
-    st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
-    st.markdown("- **Stop-Loss & Take-Profit:** Werden dynamisch über das ATR-Risikomanagement berechnet, um dein eingezahltes Kapital bei unvorhergesehenen Marktturbulenzen abzusichern.")
+    st.markdown("### 🧬 Modul 2: Der Quant Self-Tuning Selbstlern-Code")
+    st.markdown("""
+    Das integrierte **Selbstlernmodul** (`generate_local_self_learning_optimizations`) sorgt dafür, dass sich das Dashboard anhand echter historischer Testergebnisse in deiner `prediction_log.csv` kontinuierlich anpasst:
+    * **Zeitraumbewusste Reifeprüfung:** Jedes alte Signal wird anhand seines gewählten Zeitraums (`Target_Horizon` wie z. B. 24 Stunden, 7 Tage oder 2 Jahre) programmatisch im Hintergrund geprüft.
+    * **Trefferquoten-Analyse:** Es wird ermittelt, ob Käufe (`KAUFEN`) nach Ablauf des Horizonts im Plus waren und ob Verkaufs-Warnungen (`VORSICHT` / `GEWINNE SICHERN`) einen Absturz korrekt vorhergesagt haben.
+    * **Dynamische Gewichtung:** Fällt die Trefferquote in bestimmten Marktphasen ab, passt der Algorithmus die Indikator-Gewichtungen (z. B. stärkere Gewichtung von Orderbuch-Druck oder Makro-Zinsen) automatisch an, um die Prognosegüte für zukünftige Zyklen zu optimieren.
+    """)
 
     st.markdown("---")
-    st.markdown("### 🌐 Modul 3: Makro-Ökonomie & On-Chain")
+    st.markdown("### 📊 Modul 3: Analyse der Signale & detaillierte Auswertung")
+    st.markdown("""
+    Die Signalerstellung kombiniert mehrere mathematische und fundamentale Ebenen:
+    * **Z-Score (Statistische Abweichung):** Misst, wie weit der aktuelle Kurs vom gleitenden Durchschnitt entfernt ist. Extreme Minuswerte (z. B. unter -1.8 Standardabweichungen) signalisieren historische Übertreibungen nach unten.
+    * **Gewichteter Multi-Faktor-Score:** Acht verschiedene Säulen (Trend, ETF-Zuflüsse, Makro/VIX, Fear & Greed, Kraken-Orderbuch, RSI, News-Sentiment und DeFi-Liquidität) werden gewichtet und zu einem Gesamtscore verrechnet.
+    * **Risikomanagement (ATR & Stops):** Über die Average True Range (ATR) werden Stop-Loss und Take-Profit dynamisch berechnet, ergänzt durch einen integrierten Positionsgrößen-Rechner zur Absicherung des Depots.
+    """)
+
+    st.markdown("---")
+    st.markdown("### 🛡️ Modul 4: Risikomanagement & Makro-Ökonomie")
+    st.markdown("- **ATR (Average True Range):** Misst die historische Volatilität eines Assets. Je höher die ATR, desto größer schwankt der Kurs.")
     st.markdown("- **Spot-ETF Nettoflüsse:** Zeigen an, ob institutionelle Investoren (BlackRock, Fidelity etc.) Kapital in den Markt pumpen oder abziehen.")
     st.markdown("- **CBOE VIX:** Der „Angstindex“ der Märkte. Werte über 25 signalisieren Panikphasen, in denen Krypto oft korreliert.")
-    st.markdown("- **Kraken Orderbuch-Druck:** Zeigt das Verhältnis von Kauf- (Bids) zu Verkaufsorders (Asks) direkt im Kraken-Orderbuch. Positive Werte signalisieren akuten Käuferdruck.")
+    st.markdown("- **Kraken Orderbuch-Druck:** Zeigt das Verhältnis von Kauf- (Bids) zu Verkaufsorders (Asks) direkt im Kraken-Orderbuch.")
 
 st.markdown("---")
 st.caption("⚠️ **Disclaimer:** Dies ist keine Anlageberatung. Die Signale dienen rein zu Bildungszwecken.")
