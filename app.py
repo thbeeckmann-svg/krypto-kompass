@@ -566,7 +566,7 @@ def evaluate_learning_data(df_archive, current_data):
         if pd.isnull(parsed_dt): continue
         
         time_diff_hours = (datetime.now(BERLIN_TZ).replace(tzinfo=None) - parsed_dt).total_seconds() / 3600.0
-        if time_diff_hours < 24: continue
+        if time_diff_hours < 0.5: continue
         
         c_name = row.get("Coin", "")
         price_then = float(row.get("Kurs_Damals", 0))
@@ -802,6 +802,7 @@ def log_market_data(fg_val, fg_txt, bond_val, bond_change, nikkei_val, nikkei_ch
         except: pass
     else: save_and_commit_csv(MARKET_LOG_FILE, pd.DataFrame([market_entry]))
 
+# --- BOMBEN SICHERE LOG-FUNKTION (NUR ANHÄNGEN, NIEMALS LÖSCHEN) ---
 def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
     today_str = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     date_only = datetime.now(BERLIN_TZ).strftime("%Y-%m-%d")
@@ -816,28 +817,39 @@ def log_prediction(coin, price, signal_text, fg_val, target_horizon="7 Tage"):
         "Datenquelle": "Binance Spot REST API"
     }
 
-    if os.path.exists(LOG_FILE):
-        try:
-            df_log = pd.read_csv(LOG_FILE)
-            for col in new_row_data.keys():
-                if col not in df_log.columns:
-                    df_log[col] = ""
-            
-            df_log["DateOnly"] = df_log["Datum"].astype(str).str[:10]
-            mask = (df_log["DateOnly"] == date_only) & (df_log["Coin"] == coin)
+    try:
+        if os.path.exists(LOG_FILE):
+            df_existing = pd.read_csv(LOG_FILE)
+            df_existing["DateOnly"] = df_existing["Datum"].astype(str).str[:10]
+            mask = (df_existing["DateOnly"] == date_only) & (df_existing["Coin"] == coin)
             
             if mask.any():
                 for key, val in new_row_data.items():
-                    df_log.loc[mask, key] = val
+                    df_existing.loc[mask, key] = val
+                df_existing = df_existing.drop(columns=["DateOnly"], errors="ignore")
+                df_existing.to_csv(LOG_FILE, index=False)
             else:
-                df_log = pd.concat([df_log, pd.DataFrame([new_row_data])], ignore_index=True)
-            
-            df_log = df_log.drop(columns=["DateOnly"], errors="ignore")
-            save_and_commit_csv(LOG_FILE, df_log)
-        except Exception:
+                pd.DataFrame([new_row_data]).to_csv(LOG_FILE, mode='a', header=False, index=False)
+        else:
             pd.DataFrame([new_row_data]).to_csv(LOG_FILE, index=False)
-    else:
-        save_and_commit_csv(LOG_FILE, pd.DataFrame([new_row_data]))
+
+        # Sicherer GitHub-Sync
+        github_token = st.secrets.get("GITHUB_TOKEN")
+        repo = st.secrets.get("GITHUB_REPO")
+        if github_token and repo and os.path.exists(LOG_FILE):
+            df_all = pd.read_csv(LOG_FILE)
+            url = f"https://api.github.com/repos/{repo}/contents/{LOG_FILE}"
+            headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+            res = requests.get(url, headers=headers, timeout=3)
+            sha = res.json().get("sha") if res.status_code == 200 else None
+            
+            csv_str = df_all.to_csv(index=False)
+            content_b64 = base64.b64encode(csv_str.encode("utf-8")).decode("utf-8")
+            payload = {"message": f"🤖 Sicherer Append-Log: {LOG_FILE}", "content": content_b64}
+            if sha: payload["sha"] = sha
+            requests.put(url, headers=headers, json=payload, timeout=3)
+    except Exception:
+        pass
 
 # --- GEWICHTUNGSBASIERTE & PERFORMANCE-LOGISCHE SIGNAL-LOGIK MIT CRASH-ERHOLUNGS-KAUFLOGIK ---
 def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_markets, eurozone_market, stock_indices, etf_net_flow, vix_data, news_score, llama_data, btc_dom, kraken_pressure, zeitraum, weights, rsi_val=None, change_24h=0.0, perf_val=0.0):
@@ -861,19 +873,16 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     if risk_off and z_score < -1.2:
         return ("VORSICHT / KEIN KAUF 🔴", f"Liquidations-Schutz aktiv: VIX bei {vix_val:.1f} und ETF-Abflüsse (Z-Score: {z_score:.2f}).", z_score)
 
-    # NEU: Crash-Erholungs-Kauflogik für massive Minus-Werte im Rückblick-Zeitraum (z.B. 1 Jahr)
     if perf_val <= -30.0 and z_score >= -0.5:
         return ("STARKE KAUFCHANCE 🟢🟢", f"Historisch starker Crash-Rücksetzer ({perf_val:+.2f}%) mit stabiler Bodenbildung / Erholung (Z-Score: {z_score:.2f}). Exzellenter langfristiger Einstieg.", z_score)
     elif perf_val <= -15.0 and z_score >= -0.8:
         return ("KAUFEN 🟢", f"Tief im Minus im Rückblick-Zeitraum ({perf_val:+.2f}%), zeigt aber Anzeichen einer Erholung.", z_score)
 
-    # Performance-basierte Gewinnmitnahmen bei starken historischen Zuwächsen
     if perf_val >= 25.0 or (perf_val >= 15.0 and fg_value >= 75):
         return ("GEWINNE SICHERN 🔴🔴", f"Starker historischer Gewinn im gewählten Zeitraum ({perf_val:+.2f}%) bei hoher Markt-Gier (Fear & Greed: {fg_value}). Zeit für Teilverkäufe.", z_score)
     elif perf_val >= 12.0:
         return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Anstieg von {perf_val:+.2f}% im Rückblick-Zeitraum. Teilgewinne realisieren.", z_score)
 
-    # Kauf-Signale bei Rücksetzern
     if z_score <= -1.8 and total_weighted_score >= -10 and (rsi_val is None or rsi_val <= 33) and not risk_off:
         return ("STARKE KAUFCHANCE 🟢🟢", f"Statistisch stark überverkauft (Z-Score: {z_score:.2f}, RSI: {rsi_val:.1f}) bei positivem Gesamt-Score ({total_weighted_score:.1f}).", z_score)
     elif z_score <= -0.9 and total_weighted_score >= -20 and not risk_off:
@@ -1182,7 +1191,7 @@ if current_data and len(current_data) > 0:
                     st.info(f"💡 **Begründung ({zeitraum_wahl}):** {reason}")
                     
                     z_color = "#2ecc71" if z_score <= -0.9 else ("#e74c3c" if z_score >= 1.5 else "#3498db")
-                    st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;'>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
+                    st.markdown(f"📊 **Z-Score Statistische Abweichung:** <span style='color:{z_color}; font-weight:bold; font-size:1.1rem;`>{format_ger(z_score, 2, True)}</span>", unsafe_allow_html=True)
                     
                     st.markdown(f"🎯 **Empfehlung:** ca. **{format_ger(coin_menge, 4)} {coin.upper()} {symbol}** kaufen ({format_ger(investition_eur, 2)} € aus der Tranche).")
                     
