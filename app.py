@@ -866,7 +866,7 @@ def generate_signal(price, hist_prices, volume, fg_value, bond_change, asian_mar
     elif perf_val >= 12.0:
         return ("VORSICHT / TEILVERKAUF 🔴", f"Solider Anstieg von {perf_val:+.2f}% im Rückblick-Zeitraum. Teilgewinne realisieren.", z_score)
 
-    # 2. NEU: Antizyklische Kauf-Chance bei massiven historischen Einbrüchen (z.B. -40% bis -70% wie bei Cardano)
+    # 2. Antizyklische Kauf-Chance bei massiven historischen Einbrüchen (z.B. -40% bis -70% wie bei Cardano)
     if perf_val <= -40.0 and total_weighted_score >= -25 and not risk_off:
         return ("STARKE KAUFCHANCE 🟢🟢", f"Massiver historischer Rabatt im gewählten Zeitraum ({perf_val:+.2f}%) mit Bodenbildungs-Ansatz. Antizyklische Kaufchance.", z_score)
     elif perf_val <= -25.0 and total_weighted_score >= -20 and not risk_off:
@@ -919,6 +919,10 @@ with col_btn:
 aktuelle_zeit = datetime.now(BERLIN_TZ).strftime("%d.%m.%Y %H:%M:%S")
 st.caption(f"Letztes Update: {aktuelle_zeit}")
 
+# --- FIX: COIN-AUSWAHL GANZ OBEN IM HAUPTBEREICH (STANDARDMÄSSIG ALLE AKTIV) ---
+coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
+ausgewaehlte_coins = st.multiselect("Kryptowährungen anzeigen:", options=list(coins_map.keys()), default=list(coins_map.keys()))
+
 # EINSTELLUNGEN & INVESTITIONS-PLANUNG
 with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=False):
     col_e1, col_e2 = st.columns(2)
@@ -928,8 +932,6 @@ with st.expander("⚙️ **Einstellungen & Investitions-Planung**", expanded=Fal
         geplantes_budget = st.number_input("Eigenen Betrag eingeben (€):", min_value=10.0, value=1000.0, step=50.0) if investment_wahl == "Individuell" else float(investment_wahl)
 
     with col_e2:
-        coins_map = {"Bitcoin": "BTCEUR", "Ethereum": "ETHEUR", "Solana": "SOLEUR", "Cardano": "ADAEUR", "Bitcoin Cash": "BCHEUR"}
-        ausgewaehlte_coins = st.multiselect("Kryptowährungen anzeigen:", options=list(coins_map.keys()), default=list(coins_map.keys()))
         auto_refresh_aktiv = st.checkbox("🔄 Auto-Refresh (alle 5 Min.)", value=True)
 
     st.write("---")
@@ -1029,7 +1031,7 @@ log_market_data(fg_value, fg_text, bond_val, bond_change, nikkei_val, nikkei_chg
 
 if current_data and len(current_data) > 0:
     if not ausgewaehlte_coins:
-        st.warning("👈 Bitte wähle oben im Einstellungen-Menü mindestens eine Kryptowährung aus.")
+        st.warning("👈 Bitte wähle oben mindestens eine Kryptowährung aus.")
     else:
         raw_coin_results = {}
         
