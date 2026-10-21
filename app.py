@@ -1292,7 +1292,7 @@ with st.container(border=True):
         oil_color = "#2ecc71" if ext_macro.get("oil_chg", 0) >= 0 else "#e74c3c"
         copper_color = "#2ecc71" if ext_macro.get("copper_chg", 0) >= 0 else "#e74c3c"
         vix_color = "#e74c3c" if vix_data.get("vix_chg", 0) >= 0 else "#2ecc71"
-        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#e74c3c"
+        ndx_color = "#2ecc71" if vix_data.get("nasdaq_chg", 0) >= 0 else "#2ecc71"
         etf_color = "#2ecc71" if real_etf_flow >= 0 else "#e74c3c"
 
         st.markdown(f"""
@@ -1325,12 +1325,16 @@ with st.container(border=True):
             sse_v, sse_c = ext_macro.get("sse_val", 0), ext_macro.get("sse_chg", 0)
             st.write(f"🌏 **Nikkei 225:** {format_ger(n_val, 0)} ({format_ger(n_chg, 2, True)}%) | **Hang Seng:** {format_ger(h_val, 0)} ({format_ger(h_chg, 2, True)}%) | **Shanghai Comp:** {format_ger(sse_v, 0)} ({format_ger(sse_c, 2, True)}%)")
 
-        st.write("---")
-        st.markdown(f"📰 **Zins- & Nachrichten-Sentiment:** **{news_score:+d} / 100**")
-        if top_headlines:
-            st.caption("Aktuelle Schlagzeilen:")
-            for title, link in top_headlines:
-                st.markdown(f"- [{title}]({link})")
+# --- NACHRICHTEN & ZINS-SENTIMENT PORTAL ---
+st.write("")
+with st.container(border=True):
+    st.markdown(f"📰 **Krypto-Nachrichten & Zins-Sentiment:** **{news_score:+d} / 100**")
+    st.caption("Echtzeit-Schlagzeilen & Markt-Pulse:")
+    if top_headlines:
+        for title, link in top_headlines:
+            st.markdown(f"- [{title}]({link})")
+    else:
+        st.info("Aktuell keine Schlagzeilen verfügbar.")
 
 # --- KRYPTO-AKADEMIE & LERNPFAD ---
 st.write("")
