@@ -91,3 +91,4 @@ Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle,Target_Horizon
 2026-10-21 22:24:58,Bitcoin,75198.6484375,HALTEN,63.0,7 Tage,Binance Spot REST API
 2026-10-21 22:24:58,Ethereum,2216.360107421875,HALTEN,63.0,7 Tage,Binance Spot REST API
 2026-10-21 22:28:11,Cardano,0.2029500007629394,HALTEN,63.0,7 Tage,Binance Spot REST API
+2026-10-21 22:28:50,Cardano,0.2027300000190735,HALTEN,63.0,24 Stunden,Binance Spot REST API
