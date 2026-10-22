@@ -106,3 +106,4 @@ Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle,Target_Horizon
 2026-10-22 08:10:17,Bitcoin,73547.296875,HALTEN,68.0,7 Tage,Binance Spot REST API
 2026-10-22 08:10:28,Cardano,0.1945499926805496,KAUFEN,68.0,24 Stunden,Binance Spot REST API
 2026-10-22 08:10:28,Bitcoin Cash,247.2100067138672,KAUFEN,68.0,24 Stunden,Binance Spot REST API
+2026-10-22 11:42:46,Bitcoin,72752.4921875,HALTEN,68.0,7 Tage,Binance Spot REST API
