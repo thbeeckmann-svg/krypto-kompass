@@ -152,3 +152,4 @@ Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle,Target_Horizon
 2026-10-26 11:01:59,Solana,90.5,KAUFEN,50.0,7 Tage,Binance Spot REST API
 2026-10-26 11:01:59,Bitcoin Cash,247.6999969482422,KAUFEN,50.0,7 Tage,Binance Spot REST API
 2026-10-26 11:01:59,Ethereum,2079.27001953125,KAUFEN,50.0,7 Tage,Binance Spot REST API
+2026-10-26 11:02:10,Bitcoin Cash,247.6999969482422,HALTEN,50.0,24 Stunden,Binance Spot REST API
