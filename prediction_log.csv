@@ -233,3 +233,4 @@ Datum,Coin,Kurs_Damals,Signal,FearGreed,Datenquelle,Target_Horizon
 2026-10-31 10:46:49,Cardano,0.17260000109672546,KAUFEN,30.0,30 Tage,Binance Spot REST API
 2026-10-31 15:56:37,Ethereum,2014.1199951171875,KAUFEN,30.0,7 Tage,Binance Spot REST API
 2026-10-31 15:57:02,Bitcoin Cash,259.0400085449219,STARKE,30.0,6 Monate,Binance Spot REST API
+2026-11-01 19:07:08,Bitcoin,69839.171875,KAUFEN,34.0,7 Tage,Binance Spot REST API
